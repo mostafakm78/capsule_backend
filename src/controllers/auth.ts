@@ -38,7 +38,6 @@ export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: 
 
 export const login = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
   try {
-    let loadedUser;
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
@@ -69,8 +68,9 @@ export const login = async (req: Request<{}, {}, Singup>, res: Response, next: N
     res.cookie('token', token, {
       httpOnly: true,
       secure: false,
-      sameSite: 'strict',
+      sameSite: 'none',
       maxAge: 24 * 60 * 60 * 1000,
+      path: '/',
     });
 
     res.json({ message: 'Login successful' });
@@ -81,4 +81,14 @@ export const login = async (req: Request<{}, {}, Singup>, res: Response, next: N
       data: error,
     } as AppError);
   }
+};
+
+export const logout = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: false,
+    sameSite: 'none',
+    path: '/',
+  });
+  res.json({ message: 'Logged out' });
 };

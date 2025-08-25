@@ -1,11 +1,19 @@
 import { NextFunction, Request, Response } from 'express';
-import { AppError, Singup } from '../types/todo';
+import { AppError, AuthRequest } from '../types/todo';
 import User from '../models/User';
 
-export const getUser = async (req: Request, res: Response, next: NextFunction) => {
+export const getUser = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user?.id;
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, _id: userId });
+
+    if (!user) {
+      return next({
+        message: 'User not Found',
+        statusCode: 404,
+      } as AppError);
+    }
 
     res.status(200).json({ message: 'user Found', user });
   } catch (error) {
@@ -15,4 +23,11 @@ export const getUser = async (req: Request, res: Response, next: NextFunction) =
       statusCode: 500,
     } as AppError);
   }
+};
+
+export const updateUser = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id
+    
+  } catch (error) {}
 };

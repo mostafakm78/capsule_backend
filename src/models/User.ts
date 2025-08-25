@@ -44,12 +44,8 @@ const UserSchema = new Schema(
     about: {
       type: String,
     },
-    capsules: {
-      type: Schema.Types.ObjectId,
-      ref: 'Capsule',
-    },
   },
-  { timestamps: true }
+  { timestamps: true, versionKey: false }
 );
 
 export default mongoose.model('User', UserSchema);

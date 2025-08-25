@@ -11,6 +11,9 @@ import cookieParser from 'cookie-parser';
 import { requireAdmin, requireAuth } from './middleware/is-auth';
 import meRouter from './routes/me';
 import adminRouter from './routes/admin';
+import capsuleRoute from './routes/capsule';
+import { CategoryGroup } from './models/Category';
+import { seedCategories } from './models/seedCategories';
 
 dotenv.config();
 
@@ -19,26 +22,32 @@ const app = express();
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-app.use(
-  cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true,
-  })
-);
+const ALLOWED = ['http://localhost:3000'];
+app.use(cors({
+  origin: ALLOWED,
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 
 app.use('/auth', authRouter);
-app.use('/me' , requireAuth , meRouter)
-app.use('/admin' , requireAuth , requireAdmin , adminRouter)
-// app.use('/users', userRouter);
-// app.use('/capsules');
+app.use('/me', requireAuth, meRouter);
+app.use('/capsules', requireAuth, capsuleRoute);
+app.use('/admin', requireAuth, requireAdmin, adminRouter);
 
 app.use((error: AppError, req: Request, res: Response, next: NextFunction) => {
   const status = error.statusCode ?? 500;
   const message = error.message || 'Internal Server Error';
   const data = error.data;
   res.status(status).json({ message, data });
+});
+
+mongoose.connection.once('open', async () => {
+  const count = await CategoryGroup.countDocuments();
+  if (count === 0) {
+    await seedCategories();
+    console.log('✅ Categories seeded');
+  }
 });
 
 const start = async () => {
