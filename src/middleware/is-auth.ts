@@ -48,10 +48,6 @@ export const requireAuth = async (req: Request & AuthRequest, res: Response, nex
       } as AppError;
     }
 
-    // if (user.flag && user.flag !== "none") {
-
-    // }
-
     req.user = { id: payload.id, role: payload.role, email: user.email };
     next();
   } catch (error) {
@@ -65,10 +61,10 @@ export const requireAuth = async (req: Request & AuthRequest, res: Response, nex
 
 export const requireAdmin = (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   if (req.user?.role !== 'admin') {
-    return {
+    return next({
       message: 'Admin only',
       statusCode: 403,
-    } as AppError;
+    } as AppError);
   }
   next();
 };

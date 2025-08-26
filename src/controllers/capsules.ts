@@ -13,7 +13,7 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
       } as AppError);
     }
 
-    const { page = '1', limit = '10', visibility, lock, unlockOnly, categoryItem, q } = req.query as Record<string, string>;
+    const { page = '1', limit = '10', visibility, lock, unlockOnly, categoryItem, q, sort } = req.query as Record<string, string>;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -45,17 +45,25 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
       and.push({ categoryItem: { $in: ids } });
     }
 
-    if (q) {
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const query = (q ?? '').trim();
+    if (query) {
+      const pattern = escapeRegExp(query);
       and.push({
-        $or: [{ title: { $regex: q, $options: 'i' } }, { description: { $regex: q, $options: 'i' } }],
+        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
       });
     }
 
     const where = and.length === 1 ? and[0] : { $and: and };
 
+    const s = (sort || '').toLowerCase();
+    const dir: 1 | -1 = s === 'oldest' ? 1 : -1;
+
+    const sortObj = { createdAt: dir };
+
     const [items, total] = await Promise.all([
       Capsule.find(where)
-        .sort({ createdAt: -1 })
+        .sort(sortObj)
         .skip((pageNum - 1) * limitNum)
         .limit(limitNum)
         .lean(),
@@ -70,6 +78,8 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
         total,
         pages: Math.ceil(total / limitNum),
       },
+      sort: dir === -1 ? 'newest' : 'oldest',
+      filters: where,
     });
   } catch (error) {
     return next({
