@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import User from '../models/User';
-import { AppError, AuthRequest } from '../types/todo';
+import { AppError, AuthRequest, Flag, Role } from '../types/todo';
 import bcrypt from 'bcryptjs';
 import Capsule from '../models/Capsule';
 import { Types } from 'mongoose';
@@ -347,6 +347,7 @@ export const getSingleUserCapsule = async (req: Request & AuthRequest, res: Resp
     const userId = req.user?.id;
     const userRole = req.user?.role;
     const singleUserId = req.params.id;
+    const capsuleId = req.params.capsuleId;
 
     if (!userId) {
       return next({
@@ -369,11 +370,192 @@ export const getSingleUserCapsule = async (req: Request & AuthRequest, res: Resp
       });
     }
 
+    if (!capsuleId) {
+      return next({
+        message: 'Capsule not Found',
+        statusCode: 404,
+      });
+    }
+
+    const singleCapsule = await Capsule.find({ _id: capsuleId, owner: singleUserId });
+
+    res.status(200).json({ message: 'capsule Found', singleCapsule });
   } catch (error: any) {
     return next({
       message: 'Failed to get user',
       statusCode: 500,
       data: error?.message,
     } as AppError);
+  }
+};
+
+export const editSingleUser = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const singleUserId = req.params.id;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!singleUserId) {
+      return next({
+        message: 'User not found',
+        statusCode: 404,
+      });
+    }
+
+    const allowed = ['role', 'isBanned', 'flag'] as const;
+    const body = req.body as Record<string, unknown>;
+
+    const update: Partial<{ role: Role; isBanned: boolean; flag: Flag }> = {};
+
+    let touched: boolean = false;
+    for (const key of allowed) {
+      const val = body[key];
+      if (val === undefined) continue;
+
+      touched = true;
+      if (key === 'role') {
+        if (val === 'admin' || val === 'user') {
+          update.role = val;
+        } else {
+          return next({
+            message: 'role can be only admin | user',
+            statusCode: 401,
+          });
+        }
+      }
+      if (key === 'isBanned') {
+        if (val === true || val === false) {
+          update.isBanned = val;
+        } else {
+          return next({
+            message: 'isBanned can be only boolean',
+            statusCode: 401,
+          });
+        }
+      }
+      if (key === 'flag') {
+        if (val === 'sus' || val === 'none' || val === 'violation' || val === 'review') {
+          update.flag = val;
+        } else {
+          return next({
+            message: 'flag can be only none | sus | violation | review',
+            statusCode: 401,
+          });
+        }
+      }
+    }
+
+    if (!touched) {
+      res.status(200).json({ message: 'nothing to update' });
+    }
+
+    const updateUser = await User.findByIdAndUpdate(singleUserId, { $set: update }, { new: true, runValidators: true });
+
+    if (!updateUser) {
+      return next({
+        message: 'User not Found',
+        statusCode: 404,
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Profile Updated',
+      user: updateUser,
+    });
+  } catch (error: any) {
+    return next({
+      message: 'Failed to update user',
+      statusCode: 500,
+      data: error?.message,
+    } as AppError);
+  }
+};
+
+export const editSingleUserCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const singleUserId = req.params.id;
+    const capsuleId = req.params.capsuleId;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!singleUserId) {
+      return next({
+        message: 'User not found',
+        statusCode: 404,
+      });
+    }
+
+    const allowed = ['title', 'image', 'description', 'extra', 'color', 'category'] as const;
+    const updates: any = {};
+    for (const key of allowed) {
+      const val = (req.body as any)[key];
+      if (val !== undefined) updates[key] = val;
+    }
+
+    if (req.body?.access?.visibility !== undefined) {
+      updates['access.visibility'] = req.body.access.visibility;
+      if (req.body.access.visibility === 'private') {
+        updates['access.lock'] = 'none';
+        updates['access.unlockAt'] = undefined;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(200).json({ message: 'Nothing to update' });
+    }
+
+    const updateOps: any = { $set: updates };
+    if (updates['access.lock'] === 'none') {
+      updateOps.$unset = { 'access.unlockAt': '' };
+    }
+
+    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: singleUserId }, updateOps, {
+      new: true,
+      runValidators: true,
+      context: 'query',
+    });
+
+    if (!capsule) {
+      return next({
+        message: 'Capsule not Found',
+        statusCode: 404,
+      });
+    }
+
+    return res.status(201).json({ message: 'User Capsule Updated', capsule });
+  } catch (error) {
+    return next({
+      message: 'error in update user capsule',
+      statusCode: 500,
+      data: error,
+    });
   }
 };

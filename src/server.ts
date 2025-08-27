@@ -23,17 +23,23 @@ app.use(cookieParser());
 app.use(bodyParser.json());
 
 const ALLOWED = ['http://localhost:3000'];
-app.use(cors({
-  origin: ALLOWED,
-  credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
+app.use(
+  cors({
+    origin: ALLOWED,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+  })
+);
 
 app.use('/auth', authRouter);
 app.use('/me', requireAuth, meRouter);
 app.use('/capsules', requireAuth, capsuleRoute);
 app.use('/admin', requireAuth, requireAdmin, adminRouter);
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  next({ message: `Route ${req.method} ${req.originalUrl} not Found!`, statusCode: 404 } as AppError);
+});
 
 app.use((error: AppError, req: Request, res: Response, next: NextFunction) => {
   const status = error.statusCode ?? 500;

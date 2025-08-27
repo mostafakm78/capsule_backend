@@ -44,8 +44,21 @@ const UserSchema = new Schema(
     about: {
       type: String,
     },
+    refreshToken: {
+      type: String,
+      default: null,
+      select: false,
+      index: true,
+    },
   },
   { timestamps: true, versionKey: false }
 );
+
+UserSchema.set('toJSON', {
+  transform: (_doc, ret: any) => {
+    delete ret.refreshToken;
+    return ret;
+  },
+});
 
 export default mongoose.model('User', UserSchema);

@@ -7,7 +7,7 @@ type JwtPayload = { id: string; role: 'admin' | 'user'; iat: number; exp: number
 
 export const requireAuth = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const token = req.cookies?.token as string | undefined;
+    const token = req.cookies?.accessToken as string | undefined;
     if (!token) {
       return next({
         message: 'Authentication required',
@@ -17,39 +17,23 @@ export const requireAuth = async (req: Request & AuthRequest, res: Response, nex
 
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      return {
+      return next({
         message: 'Server JWT misconfigured',
         statusCode: 500,
-      } as AppError;
+      } as AppError);
     }
 
     let payload: JwtPayload;
     try {
       payload = jwt.verify(token, secret) as JwtPayload;
+      req.user = { id: payload.id, role: payload.role };
+      next();
     } catch (error) {
-      return {
-        message: 'Invalid or expired token',
+      return next({
+        message: 'Access token expired or invalid',
         statusCode: 401,
-      } as AppError;
+      } as AppError);
     }
-
-    const user = await User.findById(payload.id).lean();
-    if (!user) {
-      return {
-        message: 'User not Found',
-        statusCode: 404,
-      } as AppError;
-    }
-
-    if (user.isBanned) {
-      return {
-        message: 'User Is Banned',
-        statusCode: 403,
-      } as AppError;
-    }
-
-    req.user = { id: payload.id, role: payload.role, email: user.email };
-    next();
   } catch (error) {
     return next({
       message: 'Auth middleware failed',
@@ -66,5 +50,5 @@ export const requireAdmin = (req: Request & AuthRequest, res: Response, next: Ne
       statusCode: 403,
     } as AppError);
   }
-  next();
+  return next();
 };

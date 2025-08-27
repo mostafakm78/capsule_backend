@@ -15,3 +15,7 @@ export type AuthRequest = {
     email?: string;
   };
 };
+
+
+export type Role = 'admin' | 'user';
+export type Flag = 'none' | 'sus' | 'violation' | 'review';
