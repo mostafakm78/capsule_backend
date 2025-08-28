@@ -129,7 +129,7 @@ export const createCapsule = async (req: Request & AuthRequest, res: Response, n
       owner: userId,
       ...(normalizedAccess !== undefined && { access: normalizedAccess }),
       ...(req.body.color !== undefined && { color: req.body.color }),
-      ...(req.body.image !== undefined && { image: req.body.image }),
+      ...(req.file && req.file.path !== undefined && { image: req.file.path.replace(/\\/g, '/') }),
       ...(req.body.extra !== undefined && { extra: req.body.extra }),
     };
 
@@ -218,18 +218,38 @@ export const editCapsule = async (req: Request & AuthRequest, res: Response, nex
       } as AppError);
     }
 
-    const allowed = ['title', 'image', 'description', 'extra', 'color', 'category'] as const;
-    const updates: any = {};
+    if (typeof (req.body as any).access === 'string') {
+      try {
+        (req.body as any).access = JSON.parse((req.body as any).access);
+      } catch {}
+    }
+
+    const allowed = ['title', 'description', 'extra', 'color', 'category'] as const;
+    const updates: Record<string, any> = {};
     for (const key of allowed) {
       const val = (req.body as any)[key];
       if (val !== undefined) updates[key] = val;
     }
 
-    if (req.body?.access?.visibility !== undefined) {
-      updates['access.visibility'] = req.body.access.visibility;
-      if (req.body.access.visibility === 'private') {
+    if (req.file) {
+      updates.image = req.file.path.replace(/\\/g, '/');
+    }
+
+    if ((req.body as any).image === '' || (req.body as any).removeImage === 'true') {
+      updates.image = undefined;
+    }
+
+    const access = (req.body as any).access;
+    if (access && typeof access === 'object') {
+      if (access.visibility !== undefined) {
+        updates['access.visibility'] = access.visibility;
+      }
+      if (access.visibility === 'private') {
         updates['access.lock'] = 'none';
         updates['access.unlockAt'] = undefined;
+      } else {
+        if (access.lock !== undefined) updates['access.lock'] = access.lock;
+        if (access.unlockAt !== undefined) updates['access.unlockAt'] = access.unlockAt;
       }
     }
 
@@ -237,16 +257,22 @@ export const editCapsule = async (req: Request & AuthRequest, res: Response, nex
       return res.status(200).json({ message: 'Nothing to update' });
     }
 
-    const updateOps: any = { $set: updates };
-    if (updates['access.lock'] === 'none') {
-      updateOps.$unset = { 'access.unlockAt': '' };
+    const $set: Record<string, any> = {};
+    const $unset: Record<string, any> = {};
+
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === undefined) {
+        $unset[k] = '';
+      } else {
+        $set[k] = v;
+      }
     }
 
-    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: userId }, updateOps, {
-      new: true,
-      runValidators: true,
-      context: 'query',
-    });
+    const updateOps: any = {};
+    if (Object.keys($set).length) updateOps.$set = $set;
+    if (Object.keys($unset).length) updateOps.$unset = $unset;
+
+    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: userId }, updateOps, { new: true, runValidators: true, context: 'query' });
 
     if (!capsule) {
       return next({

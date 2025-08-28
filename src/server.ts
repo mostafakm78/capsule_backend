@@ -3,6 +3,8 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import multer, { FileFilterCallback } from 'multer';
+import csurf from 'csurf';
 import { Request, Response, NextFunction } from 'express';
 
 import { AppError } from './types/todo';
@@ -14,28 +16,84 @@ import adminRouter from './routes/admin';
 import capsuleRoute from './routes/capsule';
 import { CategoryGroup } from './models/Category';
 import { seedCategories } from './models/seedCategories';
+import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
 const app = express();
 
+const ALLOWED = ['http://localhost:3000'];
+
+const storage: multer.StorageEngine = multer.diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+    let subdir = 'others';
+    const url = req.originalUrl || '';
+    if (url.startsWith('/me')) subdir = 'profile';
+    else if (url.startsWith('/capsules')) subdir = 'capsules';
+
+    const dir = path.join(process.cwd(), 'images', subdir);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext);
+    const shortName = base.slice(0, 5).replace(/[^\w.-]/g, '_');
+    cb(null, `${Date.now()}-${shortName}${ext}`);
+  },
+});
+
+const fileFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
+  if (file.mimetype === 'image/png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/jpeg') {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
+
+const upload = multer({ storage, fileFilter }).single('image');
+
 app.use(cookieParser());
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(upload);
 
-const ALLOWED = ['http://localhost:3000'];
 app.use(
   cors({
     origin: ALLOWED,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'X-XSRF-TOKEN'],
   })
 );
+
+app.use(csurf({ cookie: { httpOnly: true, sameSite: 'lax', secure: false } }));
+app.use((req, res, next) => {
+  try {
+    const token = req.csrfToken();
+    res.cookie('X-XSRF-TOKEN', token, { httpOnly: false, sameSite: 'lax', secure: false, path: '/' });
+  } catch {}
+  next();
+});
+
+app.get('/csrf-token', (req: Request, res: Response) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
+app.use('/images', express.static(path.join(process.cwd(), 'images')));
 
 app.use('/auth', authRouter);
 app.use('/me', requireAuth, meRouter);
 app.use('/capsules', requireAuth, capsuleRoute);
 app.use('/admin', requireAuth, requireAdmin, adminRouter);
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({ message: 'Invalid CSRF token', err });
+  }
+  return next(err);
+});
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   next({ message: `Route ${req.method} ${req.originalUrl} not Found!`, statusCode: 404 } as AppError);

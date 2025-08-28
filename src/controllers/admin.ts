@@ -4,6 +4,7 @@ import { AppError, AuthRequest, Flag, Role } from '../types/todo';
 import bcrypt from 'bcryptjs';
 import Capsule from '../models/Capsule';
 import { Types } from 'mongoose';
+import { CategoryGroup, CategoryItem } from '../models/Category';
 
 export const getAdmin = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -551,11 +552,43 @@ export const editSingleUserCapsule = async (req: Request & AuthRequest, res: Res
     }
 
     return res.status(201).json({ message: 'User Capsule Updated', capsule });
-  } catch (error) {
+  } catch (error: any) {
     return next({
       message: 'error in update user capsule',
       statusCode: 500,
-      data: error,
+      data: error.message,
+    });
+  }
+};
+
+export const getCategories = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    const categoryGroup = await CategoryGroup.find().select('+title');
+    const categoryItems = await CategoryItem.find().select('+title');
+
+    res.status(200).json({ message: 'Categories Found', categoryGroup, categoryItems });
+  } catch (error: any) {
+    return next({
+      message: 'error in get Categories',
+      statusCode: 500,
+      data: error.message,
     });
   }
 };
