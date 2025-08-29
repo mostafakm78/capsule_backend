@@ -592,3 +592,193 @@ export const getCategories = async (req: Request & AuthRequest, res: Response, n
     });
   }
 };
+
+export const createCategory = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const newCategoryItem = req.body.categoryItem;
+    const categoryTitleId = req.params.titleId;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!categoryTitleId) {
+      return next({
+        message: 'Category Title is required',
+        statusCode: 401,
+      });
+    }
+
+    if (!newCategoryItem) {
+      return next({
+        message: 'category item is required',
+        statusCode: 401,
+      });
+    }
+
+    const categoryGroup = await CategoryGroup.findById(categoryTitleId);
+
+    if (!categoryGroup) {
+      return next({
+        message: 'category title is required',
+        statucCode: 401,
+      });
+    }
+
+    const categoryItem = await CategoryItem.create({ title: newCategoryItem, key: newCategoryItem, group: categoryTitleId });
+
+    res.status(200).json({ message: 'category item created successfully', categoryItem });
+  } catch (error: any) {
+    return next({
+      message: 'error in update Categories',
+      statusCode: 500,
+      data: error.message,
+    });
+  }
+};
+
+export const editCategory = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const newCategoryItem = req.body.categoryItem;
+    const categoryItemId = req.params.itemId;
+    const categoryTitleId = req.params.titleId;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!categoryTitleId) {
+      return next({
+        message: 'Category Title is required',
+        statusCode: 401,
+      });
+    }
+
+    if (!categoryItemId) {
+      return next({
+        message: 'Category Item is required',
+        statusCode: 401,
+      });
+    }
+
+    if (!newCategoryItem) {
+      return next({
+        message: 'category item is required',
+        statusCode: 401,
+      });
+    }
+
+    const categoryGroup = await CategoryGroup.findById(categoryTitleId);
+
+    if (!categoryGroup) {
+      return next({
+        message: 'category title is required',
+        statucCode: 401,
+      });
+    }
+
+    const categoryItem = await CategoryItem.findOneAndUpdate({ _id: categoryItemId, group: categoryTitleId }, { $set: { title: newCategoryItem, key: newCategoryItem } }, { runValidators: true, new: true });
+
+    if (!categoryItem) {
+      return next({
+        message: 'category item is required',
+        statucCode: 401,
+      });
+    }
+
+    res.status(200).json({ message: 'category Item updated successfully', categoryItem });
+  } catch (error: any) {
+    return next({
+      message: 'error in update Categories',
+      statusCode: 500,
+      data: error.message,
+    });
+  }
+};
+
+export const deleteCategory = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const categoryItemId = req.params.itemId;
+    const categoryTitleId = req.params.titleId;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!categoryTitleId) {
+      return next({
+        message: 'Category Title is required',
+        statusCode: 401,
+      });
+    }
+
+    if (!categoryItemId) {
+      return next({
+        message: 'category item is required',
+        statusCode: 401,
+      });
+    }
+
+    const categoryGroup = await CategoryGroup.findById(categoryTitleId);
+
+    if (!categoryGroup) {
+      return next({
+        message: 'category title is required',
+        statucCode: 401,
+      });
+    }
+
+    const categoryItem = await CategoryItem.findOneAndDelete({ _id: categoryItemId, group: categoryTitleId });
+
+    if (!categoryItem) {
+      return next({
+        message: 'category item is required',
+        statucCode: 401,
+      });
+    }
+
+    res.status(200).json({ message: 'category item deleted successfully' });
+  } catch (error: any) {
+    return next({
+      message: 'error in delete Categories',
+      statusCode: 500,
+      data: error.message,
+    });
+  }
+};
