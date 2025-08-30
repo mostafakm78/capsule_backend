@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createCategory, deleteCategory, editCategory, editSingleUser, editSingleUserCapsule, getAdmin, getCategories, getSingleUserCapsule, getSingleUserWithCapsules, getUsers, updateAdmin } from '../controllers/admin';
+import { createCategory, createNotification, deleteCategory, deleteNotification, editCategory, editSingleUser, editSingleUserCapsule, getAdmin, getCategories, getSingleUserCapsule, getSingleUserWithCapsules, getUsers, updateAdmin } from '../controllers/admin';
 import { requireAdmin, requireAuth } from '../middleware/is-auth';
 
 const adminRouter = Router();
@@ -15,5 +15,7 @@ adminRouter.get('/categories', requireAuth, requireAdmin, getCategories);
 adminRouter.post('/categories/:titleId', requireAuth, requireAdmin, createCategory);
 adminRouter.patch('/categories/:titleId/:itemId', requireAuth, requireAdmin, editCategory);
 adminRouter.delete('/categories/:titleId/:itemId', requireAuth, requireAdmin, deleteCategory);
+adminRouter.post('/notification' , requireAuth , requireAdmin , createNotification);
+adminRouter.delete('/notification/:notifId' , requireAuth , requireAdmin , deleteNotification)
 
 export default adminRouter;

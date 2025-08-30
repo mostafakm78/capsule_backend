@@ -1,10 +1,11 @@
 import { NextFunction, Request, Response } from 'express';
 import User from '../models/User';
-import { AppError, AuthRequest, Flag, Role } from '../types/todo';
+import { AppError, AuthRequest, Flag, NotificationTypes, Role } from '../types/todo';
 import bcrypt from 'bcryptjs';
 import Capsule from '../models/Capsule';
 import { Types } from 'mongoose';
 import { CategoryGroup, CategoryItem } from '../models/Category';
+import Notification from '../models/Notification';
 
 export const getAdmin = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -777,6 +778,107 @@ export const deleteCategory = async (req: Request & AuthRequest, res: Response, 
   } catch (error: any) {
     return next({
       message: 'error in delete Categories',
+      statusCode: 500,
+      data: error.message,
+    });
+  }
+};
+
+export const createNotification = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const text: string = req.body.text;
+    const type: NotificationTypes = req.body.type;
+    let title: string | undefined = req.body.title;
+    const usersFlag: Flag = req.body.flag;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    if (!text) {
+      return next({
+        message: 'text is required',
+        statusCode: 401,
+      });
+    }
+
+    if (type !== 'alert' && type !== 'message' && type !== 'news' && type !== 'system') {
+      return next({
+        message: 'type must be system | news | message | alert',
+        statusCode: 400,
+      });
+    }
+
+    if (!usersFlag) {
+      return next({
+        message: 'usersFlag is required',
+        statusCode: 400,
+      });
+    }
+
+    if (title === undefined) title = 'پیام جدید';
+
+    const flagedUsers = await User.find({ flag: usersFlag });
+
+    const userIds = flagedUsers.map((user) => user._id);
+
+    const newNotification = await Notification.create({ text, title, type, users: userIds });
+
+    res.status(200).json({ message: 'Notification created successfully', newNotification });
+  } catch (error: any) {
+    return next({
+      message: 'error in create Notification',
+      statusCode: 500,
+      data: error.message,
+    });
+  }
+};
+
+export const deleteNotification = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const notifId = req.params.notifId;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      return next({
+        message: 'Authentication required',
+        statusCode: 401,
+      } as AppError);
+    }
+
+    if (userRole !== 'admin') {
+      return next({
+        message: 'only admin can access',
+        statusCode: 403,
+      } as AppError);
+    }
+
+    const newNotification = await Notification.findByIdAndDelete(notifId);
+
+    if (!newNotification) {
+      return next({
+        message: 'noification Id is required',
+        statusCode: 400,
+      });
+    }
+
+    res.status(200).json({ message: 'Notification deleted successfully' });
+  } catch (error: any) {
+    return next({
+      message: 'error in delete Notification',
       statusCode: 500,
       data: error.message,
     });

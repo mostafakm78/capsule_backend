@@ -16,7 +16,8 @@ export type AuthRequest = {
   };
 };
 
-
 export type Role = 'admin' | 'user';
 
 export type Flag = 'none' | 'sus' | 'violation' | 'review';
+
+export type NotificationTypes = 'system' | 'news' | 'alert' | 'message';
