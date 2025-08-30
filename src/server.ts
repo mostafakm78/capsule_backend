@@ -18,6 +18,7 @@ import { CategoryGroup } from './models/Category';
 import { seedCategories } from './models/seedCategories';
 import path from 'path';
 import fs from 'fs';
+import contactUsRouter from './routes/contactus';
 
 dotenv.config();
 
@@ -83,6 +84,7 @@ app.get('/csrf-token', (req: Request, res: Response) => {
 
 app.use('/images', express.static(path.join(process.cwd(), 'images')));
 
+app.use('/contactus', contactUsRouter);
 app.use('/auth', authRouter);
 app.use('/me', requireAuth, meRouter);
 app.use('/capsules', requireAuth, capsuleRoute);
