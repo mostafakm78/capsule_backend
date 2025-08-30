@@ -13,7 +13,7 @@ export const getUser = async (req: Request & AuthRequest, res: Response, next: N
         statusCode: 401,
       } as AppError);
     }
-    const user = await User.findOne({ _id: userId });
+    const user = await User.findOne({ _id: userId }).select('-OTP -otpExpiration');
 
     if (!user) {
       return next({

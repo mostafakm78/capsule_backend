@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 import { Schema } from 'mongoose';
+import { IUser } from '../types/todo';
 
-const UserSchema = new Schema(
+const UserSchema = new Schema<IUser>(
   {
     name: {
       type: String,
@@ -51,6 +52,16 @@ const UserSchema = new Schema(
       select: false,
       index: true,
     },
+    OTP: {
+      type: String,
+    },
+    otpExpiration: {
+      type: Date || null,
+    },
+    otpRequestTime: {
+    type: Date,
+    default: null,
+  },
   },
   { timestamps: true, versionKey: false }
 );
@@ -61,5 +72,9 @@ UserSchema.set('toJSON', {
     return ret;
   },
 });
+
+UserSchema.methods.isOTPValid = function () {
+  return this.otpExpiration && new Date() < this.otpExpiration;
+};
 
 export default mongoose.model('User', UserSchema);

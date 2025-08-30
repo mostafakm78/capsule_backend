@@ -94,7 +94,7 @@ export const updateAdmin = async (req: Request & AuthRequest, res: Response, nex
         if (val !== undefined) {
           if (key === 'name' || key === 'about') user[key] = String(val).trim();
           else if (key === 'birthday') user[key] = val ? String(val) : undefined;
-          else user[key] = val as any;
+          else user[key] = val as string;
         }
       }
 
@@ -124,7 +124,7 @@ export const updateAdmin = async (req: Request & AuthRequest, res: Response, nex
         touched = true;
         if (key === 'name' || key === 'about') user[key] = String(val).trim();
         else if (key === 'birthday') user[key] = val ? String(val) : undefined;
-        else user[key] = val as any;
+        else user[key] = val as string;
       }
     }
 
