@@ -1,6 +1,7 @@
 import { Schema, model } from 'mongoose';
+import { ICategoryGroup, ICategoryItem } from '../types/types';
 
-const CategoryGroupSchema = new Schema(
+const CategoryGroupSchema = new Schema<ICategoryGroup>(
   {
     key: { type: String, required: true, unique: true },
     title: { type: String, required: true },
@@ -12,7 +13,7 @@ const CategoryGroupSchema = new Schema(
 
 export const CategoryGroup = model('CategoryGroup', CategoryGroupSchema);
 
-const CategoryItemSchema = new Schema(
+const CategoryItemSchema = new Schema<ICategoryItem>(
   {
     group: { type: Schema.Types.ObjectId, ref: 'CategoryGroup', required: true },
     key: { type: String, required: true },

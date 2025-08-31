@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { Schema } from 'mongoose';
-import { IUser } from '../types/todo';
+import { IUser } from '../types/types';
 
 const UserSchema = new Schema<IUser>(
   {
@@ -54,14 +54,17 @@ const UserSchema = new Schema<IUser>(
     },
     OTP: {
       type: String,
+      select: false,
     },
     otpExpiration: {
       type: Date || null,
+      select: false,
     },
     otpRequestTime: {
-    type: Date,
-    default: null,
-  },
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   { timestamps: true, versionKey: false }
 );

@@ -6,8 +6,7 @@ import cors from 'cors';
 import multer, { FileFilterCallback } from 'multer';
 import csurf from 'csurf';
 import { Request, Response, NextFunction } from 'express';
-
-import { AppError } from './types/todo';
+import { AppError } from './types/types';
 import authRouter from './routes/auth';
 import cookieParser from 'cookie-parser';
 import { requireAdmin, requireAuth } from './middleware/is-auth';
@@ -19,6 +18,7 @@ import { seedCategories } from './models/seedCategories';
 import path from 'path';
 import fs from 'fs';
 import contactUsRouter from './routes/contactus';
+import { IMAGES_ROOT } from './helper/fileCleanup';
 
 dotenv.config();
 
@@ -26,34 +26,31 @@ const app = express();
 
 const ALLOWED = ['http://localhost:3000'];
 
-const storage: multer.StorageEngine = multer.diskStorage({
-  destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const route = (req.baseUrl || req.path || req.originalUrl || '').toLowerCase();
     let subdir = 'others';
-    const url = req.originalUrl || '';
-    if (url.startsWith('/me')) subdir = 'profile';
-    else if (url.startsWith('/capsules')) subdir = 'capsules';
+    if (route.includes('/me')) subdir = 'avatar';
+    else if (route.includes('/capsules')) subdir = 'capsules';
 
-    const dir = path.join(process.cwd(), 'images', subdir);
+    const dir = path.join(IMAGES_ROOT, subdir);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+  filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     const base = path.basename(file.originalname, ext);
-    const shortName = base.slice(0, 5).replace(/[^\w.-]/g, '_');
+    const shortName = base.slice(0, 32).replace(/[^\w.-]/g, '_');
     cb(null, `${Date.now()}-${shortName}${ext}`);
   },
 });
 
 const fileFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
-  if (file.mimetype === 'image/png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/jpeg') {
-    cb(null, true);
-  } else {
-    cb(null, false);
-  }
+  if (/^image\/(png|jpe?g)$/i.test(file.mimetype)) cb(null, true);
+  else cb(null, false);
 };
 
-const upload = multer({ storage, fileFilter }).single('image');
+export const upload = multer({ storage, fileFilter }).single('image');
 
 app.use(cookieParser());
 app.use(bodyParser.json());
@@ -82,7 +79,7 @@ app.get('/csrf-token', (req: Request, res: Response) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-app.use('/images', express.static(path.join(process.cwd(), 'images')));
+app.use('/images', express.static(IMAGES_ROOT));
 
 app.use('/contactus', contactUsRouter);
 app.use('/auth', authRouter);

@@ -1,6 +1,7 @@
 import { model, Schema } from 'mongoose';
+import { INotification } from '../types/types';
 
-const NotificationSchema = new Schema(
+const NotificationSchema = new Schema<INotification>(
   {
     title: {
       type: String,

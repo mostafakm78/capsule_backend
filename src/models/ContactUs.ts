@@ -1,6 +1,7 @@
 import { model, Schema } from 'mongoose';
+import { IContactUs } from '../types/types';
 
-const ContactUsSchema = new Schema(
+const ContactUsSchema = new Schema<IContactUs>(
   {
     firstName: {
       type: String,

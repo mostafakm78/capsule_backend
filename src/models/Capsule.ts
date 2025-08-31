@@ -1,8 +1,9 @@
 import mongoose from 'mongoose';
 import { CategoryItem } from './Category';
+import { ICapsule, ICapsuleAccess } from '../types/types';
 const { Schema } = mongoose;
 
-const AccessSchema = new Schema(
+const AccessSchema = new Schema<ICapsuleAccess>(
   {
     visibility: {
       type: String,
@@ -17,10 +18,10 @@ const AccessSchema = new Schema(
       default: 'none',
       validate: {
         validator: function (this: any, v: string) {
-          if (this.visibility === 'private' && v === 'timed') return false;
+          if (this.visibility === 'public' && v === 'timed') return false;
           return true;
         },
-        message: 'lock=timed is not allowed when visibility=private',
+        message: 'lock=timed is allowed only when visibility=private',
       },
     },
     unlockAt: {
@@ -31,16 +32,26 @@ const AccessSchema = new Schema(
 );
 
 AccessSchema.pre('validate', function (next) {
-  if (this.lock === 'timed' && !this.unlockAt) {
-    return next(new Error('unlockAt is required when lock is TIMED'));
+  if (this.visibility === 'public') {
+    this.lock = 'none';
+    this.unlockAt = undefined as any;
   }
-  if (this.visibility === 'private' && this.lock !== 'none') {
-    return next(new Error('when visibility=private, lock must be "none"'));
+
+  if (this.lock === 'timed') {
+    if (this.visibility !== 'private') {
+      return next(new Error('lock=timed is only valid with visibility=private'));
+    }
+    if (!this.unlockAt) {
+      return next(new Error('unlockAt is required when lock is TIMED'));
+    }
+  } else {
+    if (this.unlockAt) this.unlockAt = undefined as any;
   }
+
   next();
 });
 
-const capsuleSchema = new Schema(
+const capsuleSchema = new Schema<ICapsule>(
   {
     title: {
       type: String,
