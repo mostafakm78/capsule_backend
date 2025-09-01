@@ -5,6 +5,16 @@ export interface AppError extends Error {
   data?: any;
 }
 
+export interface IViolationMeta {
+  lockUntil: Date | null;
+  strikes: number;
+  lastSetAt: Date | null;
+}
+
+export interface IModeration {
+  violation: IViolationMeta;
+}
+
 export interface IUser extends Document {
   name: string;
   email: string;
@@ -12,6 +22,7 @@ export interface IUser extends Document {
   role: 'admin' | 'user';
   isBanned: boolean;
   flag: 'none' | 'sus' | 'review' | 'violation';
+  moderation: IModeration;
   about?: string;
   refreshToken?: string;
   OTP: string;

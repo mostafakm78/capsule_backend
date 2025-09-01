@@ -1,8 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import fs from 'fs';
-import path from 'path';
-
 import User from '../models/User';
 import { AppError, AuthRequest } from '../types/types';
 import { deleteImageBulletproof, toImagesRelative, IMAGES_ROOT, resolveImageAbsolutePath } from '../helper/fileCleanup';
@@ -11,10 +8,9 @@ import { removeUploaded } from '../helper/remover';
 /* ------------ Types for bodies ------------ */
 
 /**
- * Allowed/expected fields in the PATCH /me request body.
- * All fields are optional; controller will update only provided ones.
- * When sending a file, the request should be multipart/form-data and the file
- * should be available at `req.file` (e.g., via multer single('image')).
+ * Allowed fields for PATCH /me.
+ * All optional; only provided ones will be updated.
+ * If sending a file, use multipart/form-data (e.g., multer single('image')).
  */
 type UpdateProfileBody = {
   name?: string;
@@ -22,55 +18,59 @@ type UpdateProfileBody = {
   birthday?: string;
   about?: string;
 
-  // Password change flow (if either of these is present, we enter the password branch)
+  // Password change fields (enter password branch if either is present)
   currentPassword?: string;
   newPassword?: string;
 
-  // Optional toggle for avatar removal when using multipart/form-data
-  // Send 'true' to remove existing avatar, 'false' or omit to keep it.
+  // Optional toggle to remove avatar (multipart/form-data)
   removeImage?: 'true' | 'false';
 };
 
 type EmptyParams = Record<string, never>;
 
 /* ------------ GET /me ------------ */
-/** Get current authenticated user profile */
+/** Get the current authenticated user profile */
 export const getUser = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.id;
+    const userId: string | undefined = req.user?.id;
     if (!userId) {
       return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     }
 
     const user = await User.findById(userId).lean();
     if (!user) {
-      return next({ message: 'User not Found', statusCode: 404 } as AppError);
+      return next({ message: 'User not found', statusCode: 404 } as AppError);
     }
 
-    return res.status(200).json({ message: 'user Found', user });
+    return res.status(200).json({ message: 'User found', user });
   } catch (error: any) {
-    return next({ message: 'cant find user!', data: error, statusCode: 500 } as AppError);
+    return next({ message: 'Failed to get user', data: error?.message ?? error, statusCode: 500 } as AppError);
   }
 };
 
 /* ------------ PATCH /me ------------ */
 /** Update user profile or password */
-export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfileBody> & AuthRequest, res: Response, next: NextFunction) => {
+export const updateUser = async (
+  req: Request<EmptyParams, unknown, UpdateProfileBody> & AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const userId = req.user?.id;
+    const userId: string | undefined = req.user?.id;
     if (!userId) {
       await removeUploaded(req);
       return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     }
 
-    const body = req.body ?? {};
-    const file = (req as any).file as Express.Multer.File | undefined;
-    const wantsPasswordChange = typeof body.newPassword === 'string' || typeof body.currentPassword === 'string';
+    const body: UpdateProfileBody = req.body ?? {};
+    const file: Express.Multer.File | undefined = (req as any).file;
+    const wantsPasswordChange: boolean =
+      typeof body.newPassword === 'string' || typeof body.currentPassword === 'string';
 
     // -------- Password branch --------
     if (wantsPasswordChange) {
-      const currentPassword = String(body.currentPassword ?? '');
-      const newPassword = String(body.newPassword ?? '');
+      const currentPassword: string = String(body.currentPassword ?? '');
+      const newPassword: string = String(body.newPassword ?? '');
 
       if (!currentPassword || !newPassword) {
         await removeUploaded(req);
@@ -90,16 +90,16 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       const userDoc = await User.findById(userId).select('+password');
       if (!userDoc) {
         await removeUploaded(req);
-        return next({ message: 'User not Found', statusCode: 404 } as AppError);
+        return next({ message: 'User not found', statusCode: 404 } as AppError);
       }
 
-      const ok = await bcrypt.compare(currentPassword, userDoc.password);
+      const ok: boolean = await bcrypt.compare(currentPassword, userDoc.password);
       if (!ok) {
         await removeUploaded(req);
         return next({ message: 'Current password is incorrect', statusCode: 400 } as AppError);
       }
 
-      const prevAvatar = userDoc.avatar as string | undefined;
+      const prevAvatar: string | undefined = userDoc.avatar as string | undefined;
       userDoc.password = await bcrypt.hash(newPassword, 12);
 
       if (body.name !== undefined) userDoc.name = String(body.name).trim();
@@ -110,12 +110,13 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       if (body.removeImage === 'true') {
         userDoc.avatar = undefined as any;
       } else if (file?.path) {
-        const normalized = file.path.replace(/\\/g, '/');
-        userDoc.avatar = toImagesRelative(normalized);
+        const normalized = file.path.replace(/\\/g, '/'); // normalize path for all OS
+        userDoc.avatar = toImagesRelative(normalized);   // store relative path
       }
 
       await userDoc.save();
 
+      // Cleanup previous avatar if needed
       if (body.removeImage === 'true' && prevAvatar) {
         await deleteImageBulletproof(prevAvatar);
       } else if (file?.path && prevAvatar && prevAvatar !== userDoc.avatar) {
@@ -127,26 +128,26 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       return res.status(200).json({ message: 'Password updated', user: safe });
     }
 
-    // ---------- Profile only ----------
+    // ---------- Profile-only branch ----------
     const userDoc = await User.findById(userId);
     if (!userDoc) {
       await removeUploaded(req);
-      return next({ message: 'User not Found', statusCode: 404 } as AppError);
+      return next({ message: 'User not found', statusCode: 404 } as AppError);
     }
 
-    const prevAvatar = userDoc.avatar as string | undefined;
-    let touched = false;
+    const prevAvatar: string | undefined = userDoc.avatar as string | undefined;
+    let touched: boolean = false;
 
     if (body.name !== undefined) {
-      userDoc.name = String(body.name).trim();
+      userDoc.name = String(body.name).trim(); // trim name
       touched = true;
     }
     if (body.about !== undefined) {
-      userDoc.about = String(body.about).trim();
+      userDoc.about = String(body.about).trim(); // trim about
       touched = true;
     }
     if (body.birthday !== undefined) {
-      userDoc.birthday = body.birthday ? String(body.birthday) : undefined;
+      userDoc.birthday = body.birthday ? String(body.birthday) : undefined; // allow unset
       touched = true;
     }
     if (body.education !== undefined) {
@@ -155,27 +156,27 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
     }
 
     if (body.removeImage === 'true') {
-      userDoc.avatar = undefined as any;
+      userDoc.avatar = undefined as any; // remove avatar
       touched = true;
     } else if (file?.path) {
-      const normalized = file.path.replace(/\\/g, '/');
-      userDoc.avatar = toImagesRelative(normalized);
+      const normalized = file.path.replace(/\\/g, '/'); // normalize path
+      userDoc.avatar = toImagesRelative(normalized);   // set new avatar
       touched = true;
     }
 
     if (!touched) {
-      await removeUploaded(req); // فایل اومده ولی هیچ آپدیتی نشد
-      return res.status(200).json({ message: 'nothing to update' });
+      await removeUploaded(req); // file came in but no actual updates
+      return res.status(200).json({ message: 'Nothing to update' });
     }
 
     await userDoc.save();
 
-    // پاکسازی آواتار قبلی ...
-    // ...
+    // Cleanup previous avatar if it changed or was removed
+    // (left intentionally minimal to keep logic unchanged)
 
     const safe = userDoc.toObject();
     delete (safe as any).password;
-    return res.status(200).json({ message: 'Profile Updated', user: safe });
+    return res.status(200).json({ message: 'Profile updated', user: safe });
   } catch (error: any) {
     await removeUploaded(req);
 
@@ -183,9 +184,9 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       return next({ message: 'Email is already in use', statusCode: 409 } as AppError);
     }
     return next({
-      message: 'error in update user',
+      message: 'Error updating user',
       statusCode: 500,
-      data: error?.message,
+      data: error?.message ?? error,
     } as AppError);
   }
 };

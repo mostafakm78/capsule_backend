@@ -9,7 +9,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from './types/types';
 import authRouter from './routes/auth';
 import cookieParser from 'cookie-parser';
-import { requireAdmin, requireAuth } from './middleware/is-auth';
+import { requireAdmin, requireAuth, userIsBanned } from './middleware/is-auth';
 import meRouter from './routes/me';
 import adminRouter from './routes/admin';
 import capsuleRoute from './routes/capsule';
@@ -24,8 +24,10 @@ dotenv.config();
 
 const app = express();
 
-const ALLOWED = ['http://localhost:3000'];
+// Allowed CORS origins (adjust for prod)
+const ALLOWED: string[] = ['http://localhost:3000'];
 
+// Multer storage: route-based subfolders under IMAGES_ROOT
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const route = (req.baseUrl || req.path || req.originalUrl || '').toLowerCase();
@@ -45,18 +47,22 @@ const storage = multer.diskStorage({
   },
 });
 
+// Accept only PNG/JPG images
 const fileFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
   if (/^image\/(png|jpe?g)$/i.test(file.mimetype)) cb(null, true);
   else cb(null, false);
 };
 
+// Single-file upload middleware (field: 'image')
 export const upload = multer({ storage, fileFilter }).single('image');
 
+// Core middlewares
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(upload);
 
+// CORS (credentials enabled)
 app.use(
   cors({
     origin: ALLOWED,
@@ -66,6 +72,7 @@ app.use(
   })
 );
 
+// CSRF protection (cookie-based tokens)
 app.use(csurf({ cookie: { httpOnly: true, sameSite: 'lax', secure: false } }));
 app.use((req, res, next) => {
   try {
@@ -75,18 +82,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Helper endpoint to read CSRF token
 app.get('/csrf-token', (req: Request, res: Response) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
+// Static images
 app.use('/images', express.static(IMAGES_ROOT));
 
+// Routes
 app.use('/contactus', contactUsRouter);
-app.use('/auth', authRouter);
-app.use('/me', requireAuth, meRouter);
-app.use('/capsules', requireAuth, capsuleRoute);
-app.use('/admin', requireAuth, requireAdmin, adminRouter);
+app.use('/auth', authRouter, userIsBanned); // auth routes + ban check
+app.use('/me', requireAuth, userIsBanned, meRouter); // protected
+app.use('/capsules', requireAuth, userIsBanned, capsuleRoute); // protected
+app.use('/admin', requireAuth, requireAdmin, adminRouter); // admin-only
 
+// CSRF error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err.code === 'EBADCSRFTOKEN') {
     return res.status(403).json({ message: 'Invalid CSRF token', err });
@@ -94,17 +105,20 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   return next(err);
 });
 
+// 404 handler for unknown routes
 app.use((req: Request, res: Response, next: NextFunction) => {
-  next({ message: `Route ${req.method} ${req.originalUrl} not Found!`, statusCode: 404 } as AppError);
+  next({ message: `Route ${req.method} ${req.originalUrl} not found`, statusCode: 404 } as AppError);
 });
 
+// Central error handler
 app.use((error: AppError, req: Request, res: Response, next: NextFunction) => {
-  const status = error.statusCode ?? 500;
-  const message = error.message || 'Internal Server Error';
+  const status: number = error.statusCode ?? 500;
+  const message: string = error.message || 'Internal Server Error';
   const data = error.data;
   res.status(status).json({ message, data });
 });
 
+// Seed categories on first connect
 mongoose.connection.once('open', async () => {
   const count = await CategoryGroup.countDocuments();
   if (count === 0) {
@@ -113,19 +127,21 @@ mongoose.connection.once('open', async () => {
   }
 });
 
-const start = async () => {
+// App bootstrap (DB + HTTP)
+const start = async (): Promise<void> => {
   try {
     await mongoose.connect('mongodb://localhost:27017/capsule');
-    console.log('Database is Connected!');
+    console.log('Database connected');
 
     app.listen(8080, () => {
       console.log('Server is running on port 8080');
     });
   } catch (error) {
-    console.log('Database connection faild =>', error);
+    console.log('Database connection failed =>', error);
   }
 };
 
+// Global process guards
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });

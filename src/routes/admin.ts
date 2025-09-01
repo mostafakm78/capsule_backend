@@ -4,7 +4,6 @@ import { requireAdmin, requireAuth } from '../middleware/is-auth';
 
 const adminRouter = Router();
 
-
 adminRouter.get('/users', requireAuth, requireAdmin, getUsers);
 adminRouter.get('/users/:id', requireAuth, requireAdmin, getSingleUserWithCapsules);
 adminRouter.patch('/users/:id', requireAuth, requireAdmin, editSingleUser);

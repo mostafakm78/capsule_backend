@@ -3,24 +3,28 @@ import nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import ContactUs from '../models/ContactUs';
 
-// 👇 تایپ‌ها را از فایل types بیار
+// Types from your shared file
 import type { FormRequest, AppError, IContactUs } from '../types/types';
 
-// Controller to handle "Contact Us" form submissions
-export const postContactForm = async (req: Request<Record<string, never>, unknown, FormRequest>, res: Response, next: NextFunction): Promise<void> => {
+// Handle "Contact Us" submission
+export const postContactForm = async (
+  req: Request<Record<string, never>, unknown, FormRequest>,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-    // Destructure fields from request body
+    // Extract required fields from body (FormRequest)
     const { firstName, lastName, email, number, title, description } = req.body;
 
-    // Validation: all fields must be provided
+    // Basic validation: all fields required
     if (!firstName || !lastName || !email || !number || !title || !description) {
       return next({
-        message: 'all fields are required',
+        message: 'All fields are required',
         statusCode: 400,
       } as AppError);
     }
 
-    // Save the contact form submission to the database
+    // Persist form entry to DB
     const newContactForm: IContactUs = await ContactUs.create({
       firstName,
       lastName,
@@ -30,21 +34,21 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
       description,
     });
 
-    // Configure Nodemailer transporter (using Gmail SMTP here)
+    // Configure Nodemailer (Gmail SMTP); move creds to ENV in production
     const transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 587,
-      secure: false, // use STARTTLS
+      secure: false, // STARTTLS
       auth: {
-        user: 'mostafamf555@gmail.com', // TODO: move to environment variables
-        pass: 'aeqy ocnx rfht jepm', // Gmail app password (move to ENV)
+        user: 'mostafamf555@gmail.com', // TODO: use ENV
+        pass: 'aeqy ocnx rfht jepm',    // TODO: use ENV (App Password)
       },
     });
 
-    // Email options: send the contact form content to the admin email
+    // Compose email to admin
     const mailOptions: nodemailer.SendMailOptions = {
-      from: email, // the user's email address
-      to: 'mostafamf555@gmail.com', // admin/receiver email
+      from: email, // user email
+      to: 'mostafamf555@gmail.com', // admin email
       subject: 'پیام جدید از کاربران سایت کپسول',
       html: `
     <html lang="fa" dir="rtl">
@@ -95,27 +99,30 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
       `,
     };
 
-    // Send the email using the transporter (callback style, with types)
-    transporter.sendMail(mailOptions, (error: Error | null, info: SMTPTransport.SentMessageInfo) => {
-      if (error) {
-        console.log('Error sending email', error);
-        return next({
-          message: 'Error sending email',
-          statusCode: 500,
-          data: error.message,
-        } as AppError);
+    // Send email (callback style); note: response is sent below regardless
+    transporter.sendMail(
+      mailOptions,
+      (error: Error | null, info: SMTPTransport.SentMessageInfo): void => {
+        if (error) {
+          console.log('Error sending email', error);
+          return next({
+            message: 'Failed to send email',
+            statusCode: 500,
+            data: (error as Error).message,
+          } as AppError);
+        }
+        console.log('Email sent:', info.response);
       }
-      console.log('Email sent : ' + info.response);
-    });
+    );
 
-    // Respond with success JSON and saved contact form entry
-    res.status(200).json({ message: 'ContactUs Form created successfully', newContactForm });
+    // Success response (201 Created) with saved entity
+    res.status(201).json({ message: 'Contact form submitted', newContactForm });
   } catch (error: any) {
-    // Handle unexpected errors
+    // Unexpected server error
     return next({
-      message: 'error in post form',
+      message: 'Internal error while submitting form',
       statusCode: 500,
-      data: error.message,
+      data: error?.message ?? error,
     } as AppError);
   }
 };
