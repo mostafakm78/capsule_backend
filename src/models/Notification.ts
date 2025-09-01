@@ -11,12 +11,6 @@ const NotificationSchema = new Schema<INotification>(
       type: String,
       reauired: true,
     },
-    users: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
     type: {
       type: String,
       enum: ['message', 'alert', 'news', 'system'],

@@ -17,8 +17,8 @@ import { CategoryGroup } from './models/Category';
 import { seedCategories } from './models/seedCategories';
 import path from 'path';
 import fs from 'fs';
-import contactUsRouter from './routes/contactus';
 import { IMAGES_ROOT } from './helper/fileCleanup';
+import publicRouter from './routes/public';
 
 dotenv.config();
 
@@ -91,7 +91,7 @@ app.get('/csrf-token', (req: Request, res: Response) => {
 app.use('/images', express.static(IMAGES_ROOT));
 
 // Routes
-app.use('/contactus', contactUsRouter);
+app.use('/', publicRouter);
 app.use('/auth', authRouter, userIsBanned); // auth routes + ban check
 app.use('/me', requireAuth, userIsBanned, meRouter); // protected
 app.use('/capsules', requireAuth, userIsBanned, capsuleRoute); // protected

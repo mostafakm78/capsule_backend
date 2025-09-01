@@ -60,7 +60,6 @@ export interface ICategoryItem extends Document {
 
 export interface INotification extends Document {
   title: string;
-  users: Schema;
   text: string;
   type: 'message' | 'alert' | 'news' | 'system';
 }

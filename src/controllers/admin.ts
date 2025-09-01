@@ -66,11 +66,7 @@ type DeleteNotificationParams = { notifId: string };
 /* ------------------- Controllers ------------------- */
 
 // List users (admin only)
-export const getUsers = async (
-  req: Request<unknown, unknown, unknown, GetUsersQuery> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const getUsers = async (req: Request<unknown, unknown, unknown, GetUsersQuery> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -103,7 +99,12 @@ export const getUsers = async (
     const sortObj: Record<string, 1 | -1> = { createdAt: s === 'oldest' ? 1 : -1 };
 
     const [items, total] = await Promise.all([
-      User.find(where).select('-password').sort(sortObj).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+      User.find(where)
+        .select('-password')
+        .sort(sortObj)
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
       User.countDocuments(where),
     ]);
 
@@ -119,11 +120,7 @@ export const getUsers = async (
 };
 
 // Get a user + their capsules (admin only)
-export const getSingleUserWithCapsules = async (
-  req: Request<IdParam, unknown, unknown, GetUserCapsulesQuery> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const getSingleUserWithCapsules = async (req: Request<IdParam, unknown, unknown, GetUserCapsulesQuery> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -154,10 +151,7 @@ export const getSingleUserWithCapsules = async (
     }
     if (unlockOnly === 'true') {
       and.push({
-        $or: [
-          { 'access.lock': 'none' },
-          { $and: [{ 'access.lock': 'timed' }, { 'access.unlockAt': { $lte: now } }] },
-        ],
+        $or: [{ 'access.lock': 'none' }, { $and: [{ 'access.lock': 'timed' }, { 'access.unlockAt': { $lte: now } }] }],
       });
     }
 
@@ -176,10 +170,7 @@ export const getSingleUserWithCapsules = async (
     if (query) {
       const pattern: string = escapeRegExp(query);
       and.push({
-        $or: [
-          { title: { $regex: pattern, $options: 'i' } },
-          { description: { $regex: pattern, $options: 'i' } },
-        ],
+        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
       });
     }
 
@@ -190,7 +181,11 @@ export const getSingleUserWithCapsules = async (
     const sortObj: Record<string, 1 | -1> = { createdAt: dir as 1 | -1 };
 
     const [items, total] = await Promise.all([
-      Capsule.find(where).sort(sortObj).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+      Capsule.find(where)
+        .sort(sortObj)
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
       Capsule.countDocuments(where),
     ]);
 
@@ -212,11 +207,7 @@ export const getSingleUserWithCapsules = async (
 };
 
 // Get one capsule of a user (admin only)
-export const getSingleUserCapsule = async (
-  req: Request<CapsuleParams> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const getSingleUserCapsule = async (req: Request<CapsuleParams> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -242,11 +233,7 @@ export const getSingleUserCapsule = async (
 };
 
 // Edit user fields (admin only)
-export const editSingleUser = async (
-  req: Request<IdParam, unknown, EditUserBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const editSingleUser = async (req: Request<IdParam, unknown, EditUserBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -280,11 +267,7 @@ export const editSingleUser = async (
 
     if (!touched) return res.status(200).json({ message: 'Nothing to update' });
 
-    const updateUser = await User.findByIdAndUpdate(
-      singleUserId,
-      { $set: update },
-      { new: true, runValidators: true }
-    );
+    const updateUser = await User.findByIdAndUpdate(singleUserId, { $set: update }, { new: true, runValidators: true });
     if (!updateUser) return next({ message: 'User not found', statusCode: 404 } as AppError);
 
     return res.status(200).json({ message: 'Profile updated', user: updateUser });
@@ -294,11 +277,7 @@ export const editSingleUser = async (
 };
 
 // Edit a user's capsule (admin only)
-export const editSingleUserCapsule = async (
-  req: Request<CapsuleParams, unknown, EditCapsuleBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown, EditCapsuleBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -311,18 +290,12 @@ export const editSingleUserCapsule = async (
       return next({ message: 'Invalid id', statusCode: 400 } as AppError);
     }
 
-    const existing = await Capsule.findOne({ _id: capsuleId, owner: singleUserId })
-      .select('image access')
-      .lean();
+    const existing = await Capsule.findOne({ _id: capsuleId, owner: singleUserId }).select('image access').lean();
     if (!existing) {
       return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
     }
 
-    const isTimedLocked: boolean =
-      existing.access?.visibility === 'private' &&
-      existing.access?.lock === 'timed' &&
-      !!existing.access?.unlockAt &&
-      new Date(existing.access.unlockAt).getTime() > Date.now();
+    const isTimedLocked: boolean = existing.access?.visibility === 'private' && existing.access?.lock === 'timed' && !!existing.access?.unlockAt && new Date(existing.access.unlockAt).getTime() > Date.now();
 
     const allowedKeys: (keyof EditCapsuleBody)[] = ['title', 'image', 'description', 'extra', 'color', 'categoryItem'];
     const updates: Record<string, unknown> = {};
@@ -376,8 +349,7 @@ export const editSingleUserCapsule = async (
         const nextVisibility = access.visibility ?? existing.access?.visibility;
 
         if (nextVisibility === 'private' && nextLock === 'timed') {
-          const unlockAt: Date | undefined =
-            access.unlockAt !== undefined ? new Date(access.unlockAt) : existing.access?.unlockAt;
+          const unlockAt: Date | undefined = access.unlockAt !== undefined ? new Date(access.unlockAt) : existing.access?.unlockAt;
 
           if (!unlockAt || isNaN(unlockAt.getTime())) {
             return next({
@@ -408,11 +380,7 @@ export const editSingleUserCapsule = async (
       updateOps.$unset = { 'access.unlockAt': '' };
     }
 
-    const capsule = await Capsule.findOneAndUpdate(
-      { _id: capsuleId, owner: singleUserId },
-      updateOps,
-      { new: true, runValidators: true, context: 'query' }
-    );
+    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: singleUserId }, updateOps, { new: true, runValidators: true, context: 'query' });
 
     if (!capsule) return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
 
@@ -423,11 +391,7 @@ export const editSingleUserCapsule = async (
 };
 
 // Get all categories (admin only)
-export const getCategories = async (
-  req: Request & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const getCategories = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -445,11 +409,7 @@ export const getCategories = async (
 };
 
 // Create a category item (admin only)
-export const createCategory = async (
-  req: Request<CreateCategoryParams, unknown, CreateCategoryBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const createCategory = async (req: Request<CreateCategoryParams, unknown, CreateCategoryBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -479,11 +439,7 @@ export const createCategory = async (
 };
 
 // Edit a category item (admin only)
-export const editCategory = async (
-  req: Request<EditCategoryParams, unknown, CreateCategoryBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const editCategory = async (req: Request<EditCategoryParams, unknown, CreateCategoryBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -503,11 +459,7 @@ export const editCategory = async (
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
     if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
 
-    const categoryItem = await CategoryItem.findOneAndUpdate(
-      { _id: categoryItemId, group: categoryTitleId },
-      { $set: { title: newCategoryItem, key: newCategoryItem } },
-      { runValidators: true, new: true }
-    );
+    const categoryItem = await CategoryItem.findOneAndUpdate({ _id: categoryItemId, group: categoryTitleId }, { $set: { title: newCategoryItem, key: newCategoryItem } }, { runValidators: true, new: true });
 
     if (!categoryItem) return next({ message: 'Category item not found', statusCode: 404 } as AppError);
 
@@ -518,11 +470,7 @@ export const editCategory = async (
 };
 
 // Delete a category item (admin only)
-export const deleteCategory = async (
-  req: Request<DeleteCategoryParams> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const deleteCategory = async (req: Request<DeleteCategoryParams> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
@@ -550,34 +498,19 @@ export const deleteCategory = async (
 };
 
 // Create a notification for users with a flag (admin only)
-export const createNotification = async (
-  req: Request<unknown, unknown, CreateNotificationBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const createNotification = async (req: Request<unknown, unknown, CreateNotificationBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
-    const { text, type, title, flag: usersFlag } = req.body as CreateNotificationBody;
+    const { text, type, title } = req.body as CreateNotificationBody;
 
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
-
     if (!text) return next({ message: 'Text is required', statusCode: 400 } as AppError);
-
-    const allowedTypes: readonly NotificationTypes[] = ['alert', 'message', 'news', 'system'] as const;
-    if (!allowedTypes.includes(type)) {
-      return next({ message: 'type must be system | news | message | alert', statusCode: 400 } as AppError);
-    }
-
-    if (!usersFlag) return next({ message: 'usersFlag is required', statusCode: 400 } as AppError);
 
     const finalTitle: string = title ?? 'پیام جدید';
 
-    const flaggedUsers = await User.find({ flag: usersFlag }).select('_id').lean();
-    const userIds = flaggedUsers.map((u) => u._id);
-
-    const newNotification = await Notification.create({ text, title: finalTitle, type, users: userIds });
+    const newNotification = await Notification.create({ text, title: finalTitle, type });
 
     return res.status(201).json({ message: 'Notification created successfully', newNotification });
   } catch (error: any) {
@@ -586,11 +519,7 @@ export const createNotification = async (
 };
 
 // Delete a notification (admin only)
-export const deleteNotification = async (
-  req: Request<DeleteNotificationParams> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const deleteNotification = async (req: Request<DeleteNotificationParams> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { notifId } = req.params as DeleteNotificationParams;
     const userId: string | undefined = req.user?.id;

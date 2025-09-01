@@ -5,13 +5,10 @@ import ContactUs from '../models/ContactUs';
 
 // Types from your shared file
 import type { FormRequest, AppError, IContactUs } from '../types/types';
+import Notification from '../models/Notification';
 
 // Handle "Contact Us" submission
-export const postContactForm = async (
-  req: Request<Record<string, never>, unknown, FormRequest>,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const postContactForm = async (req: Request<Record<string, never>, unknown, FormRequest>, res: Response, next: NextFunction): Promise<void> => {
   try {
     // Extract required fields from body (FormRequest)
     const { firstName, lastName, email, number, title, description } = req.body;
@@ -41,7 +38,7 @@ export const postContactForm = async (
       secure: false, // STARTTLS
       auth: {
         user: 'mostafamf555@gmail.com', // TODO: use ENV
-        pass: 'aeqy ocnx rfht jepm',    // TODO: use ENV (App Password)
+        pass: 'aeqy ocnx rfht jepm', // TODO: use ENV (App Password)
       },
     });
 
@@ -100,20 +97,17 @@ export const postContactForm = async (
     };
 
     // Send email (callback style); note: response is sent below regardless
-    transporter.sendMail(
-      mailOptions,
-      (error: Error | null, info: SMTPTransport.SentMessageInfo): void => {
-        if (error) {
-          console.log('Error sending email', error);
-          return next({
-            message: 'Failed to send email',
-            statusCode: 500,
-            data: (error as Error).message,
-          } as AppError);
-        }
-        console.log('Email sent:', info.response);
+    transporter.sendMail(mailOptions, (error: Error | null, info: SMTPTransport.SentMessageInfo): void => {
+      if (error) {
+        console.log('Error sending email', error);
+        return next({
+          message: 'Failed to send email',
+          statusCode: 500,
+          data: (error as Error).message,
+        } as AppError);
       }
-    );
+      console.log('Email sent:', info.response);
+    });
 
     // Success response (201 Created) with saved entity
     res.status(201).json({ message: 'Contact form submitted', newContactForm });
@@ -121,6 +115,26 @@ export const postContactForm = async (
     // Unexpected server error
     return next({
       message: 'Internal error while submitting form',
+      statusCode: 500,
+      data: error?.message ?? error,
+    } as AppError);
+  }
+};
+
+export const getNotifications = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const AllNotif = await Notification.find({}).sort({ createdAt: -1, _id: -1 }).lean();
+
+    if (!AllNotif) return next({ message: 'Notifications not found', statusCode: 404 } as AppError);
+
+    if (AllNotif.length === 0) {
+      return res.status(200).json({ message: 'No notifications', notifications: [] });
+    }
+
+    res.status(200).json({ message: 'Notifications here', AllNotif });
+  } catch (error: any) {
+    return next({
+      message: 'Internal error while getting notifications',
       statusCode: 500,
       data: error?.message ?? error,
     } as AppError);
