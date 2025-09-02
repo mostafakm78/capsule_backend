@@ -422,7 +422,7 @@ export const createCategory = async (req: Request<CreateCategoryParams, unknown,
     if (!categoryTitleId) return next({ message: 'Category title is required', statusCode: 400 } as AppError);
     if (!Types.ObjectId.isValid(categoryTitleId)) return next({ message: 'Invalid category title id', statusCode: 400 } as AppError);
 
-    if (!newCategoryItem) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+    if (!newCategoryItem || !newCategoryItem.trim()) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
 
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
     if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
@@ -454,7 +454,7 @@ export const editCategory = async (req: Request<EditCategoryParams, unknown, Cre
     if (!Types.ObjectId.isValid(categoryTitleId) || !Types.ObjectId.isValid(categoryItemId)) {
       return next({ message: 'Invalid id', statusCode: 400 } as AppError);
     }
-    if (!newCategoryItem) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+    if (!newCategoryItem || !newCategoryItem.trim()) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
 
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
     if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
@@ -506,7 +506,9 @@ export const createNotification = async (req: Request<unknown, unknown, CreateNo
 
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
-    if (!text) return next({ message: 'Text is required', statusCode: 400 } as AppError);
+    if (!text || !text.trim()) return next({ message: 'Text is required', statusCode: 400 } as AppError);
+
+    if (!type || !type.trim()) return next({ message: 'type is required', statusCode: 400 } as AppError);
 
     const finalTitle: string = title ?? 'پیام جدید';
 

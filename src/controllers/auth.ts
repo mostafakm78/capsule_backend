@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { cookieOpts } from '../helper/cookie';
 import nodemailer from 'nodemailer';
+import { validationResult } from 'express-validator';
 
 /* ---------- Utils ---------- */
 
@@ -58,6 +59,14 @@ const sendOTP = async (email: string, otp: string): Promise<void> => {
 
 // Signup: email + password
 export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'Singup Validation failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const { email, password } = req.body;
 
@@ -97,6 +106,14 @@ export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: 
 
 // Login: email + password -> set cookies
 export const login = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'Login Validation failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const { email, password } = req.body;
 
@@ -144,6 +161,14 @@ export const login = async (req: Request<{}, {}, Singup>, res: Response, next: N
 
 // Request OTP by email (passwordless)
 export const loginWithOTP = async (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'Send OTP Validation failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const { email } = req.body as { email?: string };
 
@@ -218,6 +243,14 @@ export const loginWithOTP = async (req: Request, res: Response, next: NextFuncti
 
 // Verify OTP and issue tokens
 export const verifyOTP = async (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'Verify OTP Validations failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const { email, otp } = req.body as { email?: string; otp?: string };
 

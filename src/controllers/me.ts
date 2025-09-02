@@ -4,6 +4,8 @@ import User from '../models/User';
 import { AppError, AuthRequest } from '../types/types';
 import { deleteImageBulletproof, toImagesRelative, IMAGES_ROOT, resolveImageAbsolutePath } from '../helper/fileCleanup';
 import { removeUploaded } from '../helper/remover';
+import Notification from '../models/Notification';
+import { validationResult } from 'express-validator';
 
 /* ------------ Types for bodies ------------ */
 
@@ -50,11 +52,15 @@ export const getUser = async (req: Request & AuthRequest, res: Response, next: N
 
 /* ------------ PATCH /me ------------ */
 /** Update user profile or password */
-export const updateUser = async (
-  req: Request<EmptyParams, unknown, UpdateProfileBody> & AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfileBody> & AuthRequest, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'update user Validation Falied',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const userId: string | undefined = req.user?.id;
     if (!userId) {
@@ -64,8 +70,7 @@ export const updateUser = async (
 
     const body: UpdateProfileBody = req.body ?? {};
     const file: Express.Multer.File | undefined = (req as any).file;
-    const wantsPasswordChange: boolean =
-      typeof body.newPassword === 'string' || typeof body.currentPassword === 'string';
+    const wantsPasswordChange: boolean = typeof body.newPassword === 'string' || typeof body.currentPassword === 'string';
 
     // -------- Password branch --------
     if (wantsPasswordChange) {
@@ -111,7 +116,7 @@ export const updateUser = async (
         userDoc.avatar = undefined as any;
       } else if (file?.path) {
         const normalized = file.path.replace(/\\/g, '/'); // normalize path for all OS
-        userDoc.avatar = toImagesRelative(normalized);   // store relative path
+        userDoc.avatar = toImagesRelative(normalized); // store relative path
       }
 
       await userDoc.save();
@@ -135,7 +140,6 @@ export const updateUser = async (
       return next({ message: 'User not found', statusCode: 404 } as AppError);
     }
 
-    const prevAvatar: string | undefined = userDoc.avatar as string | undefined;
     let touched: boolean = false;
 
     if (body.name !== undefined) {
@@ -160,7 +164,7 @@ export const updateUser = async (
       touched = true;
     } else if (file?.path) {
       const normalized = file.path.replace(/\\/g, '/'); // normalize path
-      userDoc.avatar = toImagesRelative(normalized);   // set new avatar
+      userDoc.avatar = toImagesRelative(normalized); // set new avatar
       touched = true;
     }
 
@@ -185,6 +189,26 @@ export const updateUser = async (
     }
     return next({
       message: 'Error updating user',
+      statusCode: 500,
+      data: error?.message ?? error,
+    } as AppError);
+  }
+};
+
+export const getNotifications = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const AllNotif = await Notification.find({}).sort({ createdAt: -1, _id: -1 }).lean();
+
+    if (!AllNotif) return next({ message: 'Notifications not found', statusCode: 404 } as AppError);
+
+    if (AllNotif.length === 0) {
+      return res.status(200).json({ message: 'No notifications', notifications: [] });
+    }
+
+    res.status(200).json({ message: 'Notifications here', AllNotif });
+  } catch (error: any) {
+    return next({
+      message: 'Internal error while getting notifications',
       statusCode: 500,
       data: error?.message ?? error,
     } as AppError);

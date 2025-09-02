@@ -5,6 +5,7 @@ import { deleteImageBulletproof, toImagesRelative } from '../helper/fileCleanup'
 import { AppError, AuthRequest } from '../types/types';
 import { removeUploaded } from '../helper/remover';
 import User from '../models/User';
+import { validationResult } from 'express-validator';
 
 /* ------------ GET /capsules ------------ */
 export const getCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
@@ -93,6 +94,14 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
 
 /* ------------ POST /capsules ------------ */
 export const createCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'Create Capsule Validation Failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const userId: string | undefined = req.user?.id;
     const { title, description } = req.body as Record<string, any>;
@@ -321,6 +330,14 @@ export const deleteCapsule = async (req: Request & AuthRequest, res: Response, n
 
 /* ------------ PATCH /capsules/:id ------------ */
 export const editCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next({
+      message: 'edit Capsule Validation Failed',
+      statusCode: 422,
+      data: errors.array().map((err) => err.msg),
+    } as AppError);
+  }
   try {
     const capsuleId: string = req.params.id;
     const userId: string | undefined = req.user?.id;
