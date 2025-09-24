@@ -1,8 +1,9 @@
+import { ValidationChain } from 'express-validator';
 import { Document, Schema } from 'mongoose';
 
 export interface AppError extends Error {
   statusCode?: number;
-  data?: any;
+  data?: any | ValidationChain[];
 }
 
 export interface IViolationMeta {
@@ -44,18 +45,12 @@ export interface IContactUs extends Document {
 }
 
 export interface ICategoryGroup extends Document {
-  key: string;
   title: string;
-  order: number;
-  isActive: boolean;
 }
 
 export interface ICategoryItem extends Document {
   group: Schema;
-  key: string;
   title: string;
-  order: number;
-  isActive: boolean;
 }
 
 export interface INotification extends Document {

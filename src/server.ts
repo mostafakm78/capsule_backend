@@ -27,13 +27,34 @@ const app = express();
 // Allowed CORS origins (adjust for prod)
 const ALLOWED: string[] = ['http://localhost:3000'];
 
+// CORS (credentials enabled)
+app.use(
+  cors({
+    origin: ALLOWED,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-XSRF-TOKEN'],
+  })
+);
+
 // Multer storage: route-based subfolders under IMAGES_ROOT
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const route = (req.baseUrl || req.path || req.originalUrl || '').toLowerCase();
-    let subdir = 'others';
-    if (route.includes('/me')) subdir = 'avatar';
-    else if (route.includes('/capsules')) subdir = 'capsules';
+    const pathname = (req.originalUrl || req.url || '').split('?')[0].toLowerCase();
+
+    let subdir: string | null = null;
+
+    if (/^\/me(\/|$)/.test(pathname)) {
+      subdir = 'avatar';
+    } else if (/^\/admin\/users\/[^/]+\/[^/]+(\/|$)/.test(pathname)) {
+      subdir = 'capsules';
+    } else if (/^\/capsules(\/|$)/.test(pathname)) {
+      subdir = 'capsules';
+    }
+
+    if (!subdir) {
+      return cb(new Error('Upload not allowed for this route'), '');
+    }
 
     const dir = path.join(IMAGES_ROOT, subdir);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -49,12 +70,22 @@ const storage = multer.diskStorage({
 
 // Accept only PNG/JPG images
 const fileFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
-  if (/^image\/(png|jpe?g)$/i.test(file.mimetype)) cb(null, true);
-  else cb(null, false);
+  const mt = (file.mimetype || '').toLowerCase();
+
+  const okByMime = mt === 'image/png' || mt === 'image/jpeg' || mt === 'image/jpg' || mt === 'image/pjpeg' || mt === 'image/x-png';
+
+  const okByExt = /\.(png|jpe?g)$/i.test(file.originalname || '');
+
+  if (okByMime || okByExt) return cb(null, true);
+
+  const err: any = new Error('فرمت فایل مجاز نیست. فقط PNG یا JPG مجاز است');
+  err.code = 'INVALID_FILE_TYPE';
+  err.statusCode = 415;
+  return cb(err);
 };
 
 // Single-file upload middleware (field: 'image')
-export const upload = multer({ storage, fileFilter }).single('image');
+export const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }).single('image');
 
 // Core middlewares
 app.use(cookieParser());
@@ -62,29 +93,13 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(upload);
 
-// CORS (credentials enabled)
-app.use(
-  cors({
-    origin: ALLOWED,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'X-XSRF-TOKEN'],
-  })
-);
-
 // CSRF protection (cookie-based tokens)
 app.use(csurf({ cookie: { httpOnly: true, sameSite: 'lax', secure: false } }));
-app.use((req, res, next) => {
-  try {
-    const token = req.csrfToken();
-    res.cookie('X-XSRF-TOKEN', token, { httpOnly: false, sameSite: 'lax', secure: false, path: '/' });
-  } catch {}
-  next();
-});
 
-// Helper endpoint to read CSRF token
-app.get('/csrf-token', (req: Request, res: Response) => {
-  res.json({ csrfToken: req.csrfToken() });
+app.get('/csrf-token', (req, res) => {
+  const token = req.csrfToken();
+  res.cookie('XSRF-TOKEN', token, { sameSite: 'lax', httpOnly: false, secure: false });
+  res.json({ csrfToken: token });
 });
 
 // Static images
@@ -115,7 +130,7 @@ app.use((error: AppError, req: Request, res: Response, next: NextFunction) => {
   const status: number = error.statusCode ?? 500;
   const message: string = error.message || 'Internal Server Error';
   const data = error.data;
-  res.status(status).json({ message, data });
+  res.status(status).json({ message, status: status, data });
 });
 
 // Seed categories on first connect

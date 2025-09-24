@@ -5,6 +5,8 @@ import Capsule from '../models/Capsule';
 import { CategoryGroup, CategoryItem } from '../models/Category';
 import Notification from '../models/Notification';
 import { AppError, AuthRequest, Flag, NotificationTypes, Role } from '../types/types';
+import { removeUploaded } from '../helper/remover';
+import { deleteImageBulletproof, toImagesRelative } from '../helper/fileCleanup';
 
 /* ---------- Query / Body / Param types ---------- */
 
@@ -73,27 +75,38 @@ export const getUsers = async (req: Request<unknown, unknown, unknown, GetUsersQ
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
 
-    const { page = '1', limit = '50', flag, banned, sort } = req.query;
+    const { page = '1', limit = '50', flag, banned, sort, q } = req.query as unknown as Record<string, string>;
 
     const pageNum: number = Math.max(1, parseInt(page, 10) || 1);
     const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
 
-    const where: FilterQuery<typeof User> = {};
+    const and: FilterQuery<typeof User>[] = [];
 
     if (typeof flag !== 'undefined') {
       const allowedFlags: readonly Flag[] = ['none', 'sus', 'review', 'violation'] as const;
       if (!allowedFlags.includes(flag as Flag)) {
         return next({ message: 'Invalid flag value', statusCode: 400 } as AppError);
       }
-      where.flag = flag as Flag;
+      and.push({ flag: flag as Flag });
     }
 
     if (typeof banned !== 'undefined') {
       if (banned !== 'true' && banned !== 'false') {
         return next({ message: 'Invalid banned value (use true | false)', statusCode: 400 } as AppError);
       }
-      where.isBanned = banned === 'true';
+      and.push({ isBanned: banned === 'true' });
     }
+
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const query: string = (q ?? '').trim();
+    if (query) {
+      const pattern = escapeRegExp(query);
+      and.push({
+        $or: [{ name: { $regex: pattern, $options: 'i' } }, { username: { $regex: pattern, $options: 'i' } }, { email: { $regex: pattern, $options: 'i' } }],
+      });
+    }
+
+    const where: FilterQuery<typeof User> = and.length === 0 ? {} : and.length === 1 ? and[0] : { $and: and };
 
     const s: string = (sort || '').toLowerCase();
     const sortObj: Record<string, 1 | -1> = { createdAt: s === 'oldest' ? 1 : -1 };
@@ -110,12 +123,100 @@ export const getUsers = async (req: Request<unknown, unknown, unknown, GetUsersQ
 
     return res.status(200).json({
       items,
+      status: 200,
       pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
       sort: sortObj.createdAt === -1 ? 'newest' : 'oldest',
       filters: where,
     });
   } catch (error: any) {
     return next({ message: 'Failed to get users', statusCode: 500, data: error?.message } as AppError);
+  }
+};
+
+export const getCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userRole: Role | undefined = req.user?.role;
+
+    if (userRole !== 'admin') {
+      return next({ message: 'Admin only', statusCode: 403 } as AppError);
+    }
+
+    // pagination & filters from query
+    const { page = '1', limit = '15', visibility, lock, unlockOnly, categoryItem, q, sort } = req.query as Record<string, string>;
+
+    const pageNum: number = Math.max(1, parseInt(page, 15) || 1);
+    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const now: Date = new Date();
+
+    const and: FilterQuery<typeof Capsule>[] = [];
+
+    // visibility filter
+    if (visibility === 'public' || visibility === 'private') {
+      and.push({ 'access.visibility': visibility });
+    }
+
+    // lock filter
+    if (lock === 'none' || lock === 'timed') {
+      and.push({ 'access.lock': lock });
+    }
+
+    // unlocked only
+    if (unlockOnly === 'true') {
+      and.push({
+        $or: [{ 'access.lock': 'none' }, { $and: [{ 'access.lock': 'timed' }, { 'access.unlockAt': { $lte: now } }] }],
+      });
+    }
+
+    // categoryItem filter
+    if (categoryItem) {
+      const ids: Types.ObjectId[] = String(categoryItem)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Types.ObjectId.isValid)
+        .map((id) => new Types.ObjectId(id));
+
+      if (ids.length === 0) {
+        return res.status(400).json({ message: 'Invalid categoryItem id(s)' });
+      }
+      and.push({ categoryItem: { $in: ids } });
+    }
+
+    // text search
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const query: string = (q ?? '').trim();
+    if (query) {
+      const pattern: string = escapeRegExp(query);
+      and.push({
+        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
+      });
+    }
+
+    const where: FilterQuery<typeof Capsule> = and.length === 0 ? {} : and.length === 1 ? and[0] : { $and: and };
+
+    // sort
+    const s = (sort || '').toLowerCase();
+    const dir: 1 | -1 = s === 'oldest' ? 1 : -1;
+    const sortObj: Record<string, 1 | -1> = { createdAt: dir };
+
+    // query
+    const [items, total] = await Promise.all([
+      Capsule.find(where)
+        .sort(sortObj)
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .populate('owner')
+        .lean(),
+      Capsule.countDocuments(where),
+    ]);
+
+    return res.status(200).json({
+      items,
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
+      sort: dir === -1 ? 'newest' : 'oldest',
+      filters: where,
+    });
+  } catch (error: any) {
+    return next({ message: 'Failed to get capsules', statusCode: 500, data: error?.message } as AppError);
   }
 };
 
@@ -191,6 +292,7 @@ export const getSingleUserWithCapsules = async (req: Request<IdParam, unknown, u
 
     return res.status(200).json({
       message: 'User found',
+      status: 200,
       user,
       capsules: {
         items,
@@ -223,7 +325,7 @@ export const getSingleUserCapsule = async (req: Request<CapsuleParams> & AuthReq
       return next({ message: 'Invalid id', statusCode: 400 } as AppError);
     }
 
-    const singleCapsule = await Capsule.findOne({ _id: capsuleId, owner: singleUserId }).lean();
+    const singleCapsule = await Capsule.findOne({ _id: capsuleId, owner: singleUserId }).populate('owner').lean();
     if (!singleCapsule) return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
 
     return res.status(200).json({ message: 'Capsule found', singleCapsule });
@@ -270,7 +372,7 @@ export const editSingleUser = async (req: Request<IdParam, unknown, EditUserBody
     const updateUser = await User.findByIdAndUpdate(singleUserId, { $set: update }, { new: true, runValidators: true });
     if (!updateUser) return next({ message: 'User not found', statusCode: 404 } as AppError);
 
-    return res.status(200).json({ message: 'Profile updated', user: updateUser });
+    return res.status(200).json({ message: 'Profile updated', status: 200, user: updateUser });
   } catch (error: any) {
     return next({ message: 'Failed to update user', statusCode: 500, data: error?.message } as AppError);
   }
@@ -279,40 +381,57 @@ export const editSingleUser = async (req: Request<IdParam, unknown, EditUserBody
 // Edit a user's capsule (admin only)
 export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown, EditCapsuleBody> & AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId: string | undefined = req.user?.id;
-    const userRole: Role | undefined = req.user?.role;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
     const { id: singleUserId, capsuleId } = req.params as CapsuleParams;
 
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
-
     if (!Types.ObjectId.isValid(singleUserId) || !Types.ObjectId.isValid(capsuleId)) {
       return next({ message: 'Invalid id', statusCode: 400 } as AppError);
     }
 
-    const existing = await Capsule.findOne({ _id: capsuleId, owner: singleUserId }).select('image access').lean();
-    if (!existing) {
-      return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
+    if ((req.body as any).access === '') delete (req.body as any).access;
+    if (typeof (req.body as any).access === 'string') {
+      try {
+        (req.body as any).access = JSON.parse((req.body as any).access);
+      } catch {}
     }
 
-    const isTimedLocked: boolean = existing.access?.visibility === 'private' && existing.access?.lock === 'timed' && !!existing.access?.unlockAt && new Date(existing.access.unlockAt).getTime() > Date.now();
+    const existing = await Capsule.findOne({ _id: capsuleId, owner: singleUserId }).select('image access').lean();
+    if (!existing) return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
+    const prevImage: string | undefined = existing.image as any;
+
+    const isTimedLocked = existing.access?.visibility === 'private' && existing.access?.lock === 'timed' && !!existing.access?.unlockAt && new Date(existing.access.unlockAt).getTime() > Date.now();
 
     const allowedKeys: (keyof EditCapsuleBody)[] = ['title', 'image', 'description', 'extra', 'color', 'categoryItem'];
     const updates: Record<string, unknown> = {};
-    let touched: boolean = false;
+    let touched = false;
 
     for (const key of allowedKeys) {
       const val = req.body[key as keyof EditCapsuleBody];
       if (val !== undefined) {
-        updates[key === 'categoryItem' ? 'categoryItem' : key] = val as unknown;
+        updates[key] = key === 'categoryItem' && Types.ObjectId.isValid(val as any) ? new Types.ObjectId(val as any) : (val as unknown);
         touched = true;
       }
     }
 
-    const access: EditCapsuleBody['access'] | undefined = (req.body as any).access;
+    if (req.file?.path) {
+      const normalized = req.file.path.replace(/\\/g, '/');
+      updates.image = toImagesRelative(normalized);
+      touched = true;
+    }
+
+    const removeImageRequested = (req.body as any).image === '' || (req.body as any).removeImage === 'true' || (req.body as any).removeImage === true;
+
+    if (removeImageRequested && !req.file?.path) {
+      updates.image = undefined;
+      touched = true;
+    }
+
+    const access = (req.body as any).access as EditCapsuleBody['access'] | undefined;
 
     if (access && typeof access === 'object') {
-      // Block access changes while timed lock is active
       if (isTimedLocked) {
         return next({
           message: 'Access is locked (timed). You cannot change access until unlockAt.',
@@ -320,7 +439,6 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
         } as AppError);
       }
 
-      // Validate visibility
       if (access.visibility !== undefined) {
         if (access.visibility !== 'public' && access.visibility !== 'private') {
           return next({ message: 'Invalid access.visibility', statusCode: 400 } as AppError);
@@ -329,13 +447,11 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
         touched = true;
       }
 
-      // Public -> force lock none and unset unlockAt
       if (access.visibility === 'public') {
         (updates as any)['access.lock'] = 'none';
         (updates as any)['access.unlockAt'] = undefined;
         touched = true;
       } else if (access.visibility === 'private' || access.visibility === undefined) {
-        // Validate lock
         if (access.lock !== undefined) {
           if (access.lock !== 'none' && access.lock !== 'timed') {
             return next({ message: 'Invalid access.lock', statusCode: 400 } as AppError);
@@ -344,7 +460,6 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
           touched = true;
         }
 
-        // Resolve next state
         const nextLock = access.lock ?? existing.access?.lock;
         const nextVisibility = access.visibility ?? existing.access?.visibility;
 
@@ -363,7 +478,6 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
               statusCode: 400,
             } as AppError);
           }
-
           (updates as any)['access.unlockAt'] = unlockAt;
           touched = true;
         } else if (nextLock === 'none') {
@@ -375,14 +489,32 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
 
     if (!touched) return res.status(200).json({ message: 'Nothing to update' });
 
-    const updateOps: any = { $set: updates };
-    if ((updates as any)['access.lock'] === 'none' || (updates as any)['access.visibility'] === 'private') {
-      updateOps.$unset = { 'access.unlockAt': '' };
+    const $set: Record<string, any> = {};
+    const $unset: Record<string, any> = {};
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === undefined) $unset[k] = '';
+      else $set[k] = v;
+    }
+    if ((updates as any)['access.lock'] === 'none' || (updates as any)['access.visibility'] === 'public') {
+      $unset['access.unlockAt'] = '';
+      delete $set['access.unlockAt'];
     }
 
-    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: singleUserId }, updateOps, { new: true, runValidators: true, context: 'query' });
+    const updateOps: any = {};
+    if (Object.keys($set).length) updateOps.$set = $set;
+    if (Object.keys($unset).length) updateOps.$unset = $unset;
 
+    const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: singleUserId }, updateOps, { new: true, runValidators: true, context: 'query' });
     if (!capsule) return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
+
+
+    try {
+      if (removeImageRequested && prevImage) {
+        await deleteImageBulletproof(prevImage);
+      } else if (req.file?.path && prevImage && prevImage !== (capsule as any).image) {
+        await deleteImageBulletproof(prevImage);
+      }
+    } catch {}
 
     return res.status(200).json({ message: 'User capsule updated', capsule });
   } catch (error: any) {

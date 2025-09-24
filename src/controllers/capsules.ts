@@ -2,10 +2,11 @@ import { NextFunction, Request, Response } from 'express';
 import Capsule from '../models/Capsule';
 import { FilterQuery, Types } from 'mongoose';
 import { deleteImageBulletproof, toImagesRelative } from '../helper/fileCleanup';
-import { AppError, AuthRequest } from '../types/types';
+import { AppError, AuthRequest, Role } from '../types/types';
 import { removeUploaded } from '../helper/remover';
 import User from '../models/User';
-import { validationResult } from 'express-validator';
+import { FieldValidationError, ValidationError, validationResult } from 'express-validator';
+import { CategoryGroup, CategoryItem } from '../models/Category';
 
 /* ------------ GET /capsules ------------ */
 export const getCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
@@ -77,6 +78,7 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
         .sort(sortObj)
         .skip((pageNum - 1) * limitNum)
         .limit(limitNum)
+        .populate('owner')
         .lean(),
       Capsule.countDocuments(where),
     ]);
@@ -94,12 +96,22 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
 
 /* ------------ POST /capsules ------------ */
 export const createCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'Create Capsule Validation Failed',
+      message: 'create capsule validation faield',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -128,6 +140,12 @@ export const createCapsule = async (req: Request & AuthRequest, res: Response, n
     if (!Types.ObjectId.isValid(categoryItem)) {
       await removeUploaded(req);
       return next({ message: 'Invalid categoryItem id', statusCode: 400 } as AppError);
+    }
+
+    const cat = await CategoryItem.findById(categoryItem).lean();
+    if (!cat) {
+      await removeUploaded(req);
+      return next({ message: 'Invalid categoryItem', statusCode: 400 } as AppError);
     }
 
     // parse access if string (multipart)
@@ -258,6 +276,7 @@ export const createCapsule = async (req: Request & AuthRequest, res: Response, n
 
     return res.status(201).json({
       message,
+      status: 201,
       capsule: newCapsule,
       meta: { userFlag: user.flag, moderation: (doc as any).moderation ?? null },
     });
@@ -287,7 +306,7 @@ export const getSingleCapsule = async (req: Request & AuthRequest, res: Response
     }
 
     // fetch one by id & owner
-    const capsule = await Capsule.findOne({ _id: capsuleId, owner: userId }).lean();
+    const capsule = await Capsule.findOne({ _id: capsuleId, owner: userId }).populate('categoryItem').lean();
     if (!capsule) {
       return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
     }
@@ -322,7 +341,7 @@ export const deleteCapsule = async (req: Request & AuthRequest, res: Response, n
       await deleteImageBulletproof((existing as any).image as string);
     }
 
-    return res.status(200).json({ message: 'Capsule deleted' });
+    return res.status(200).json({ message: 'Capsule deleted', status: 200 });
   } catch (error: any) {
     return next({ message: 'Failed to delete capsule', statusCode: 500, data: error?.message } as AppError);
   }
@@ -330,12 +349,22 @@ export const deleteCapsule = async (req: Request & AuthRequest, res: Response, n
 
 /* ------------ PATCH /capsules/:id ------------ */
 export const editCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'edit Capsule Validation Failed',
+      message: 'Edit capsule validation faield',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -352,6 +381,9 @@ export const editCapsule = async (req: Request & AuthRequest, res: Response, nex
     }
 
     // parse access when sent as JSON string (multipart)
+    if ((req.body as any).access === '') {
+      delete (req.body as any).access;
+    }
     if (typeof (req.body as any).access === 'string') {
       try {
         (req.body as any).access = JSON.parse((req.body as any).access);
@@ -498,9 +530,23 @@ export const editCapsule = async (req: Request & AuthRequest, res: Response, nex
       await deleteImageBulletproof(prevImage);
     }
 
-    return res.status(200).json({ message: 'Capsule updated', capsule });
+    return res.status(200).json({ message: 'Capsule updated', status: 200, capsule });
   } catch (error: any) {
     await removeUploaded(req);
     return next({ message: 'Failed to update capsule', statusCode: 500, data: error?.message } as AppError);
+  }
+};
+
+export const getCategories = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId: string | undefined = req.user?.id;
+
+    if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
+
+    const categoryItems = await CategoryItem.find().populate({ path: 'group', select: 'title' }).lean();
+
+    return res.status(200).json({ message: 'Categories found', status: 200, categoryItems });
+  } catch (error: any) {
+    return next({ message: 'Failed to get categories', statusCode: 500, data: error.message } as AppError);
   }
 };

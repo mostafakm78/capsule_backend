@@ -91,8 +91,8 @@ const capsuleSchema = new Schema<ICapsule>(
 
 capsuleSchema.pre('validate', async function (next) {
   if (!this.categoryItem) return next(new Error('categoryItem is required'));
-  const exists = await CategoryItem.exists({ _id: this.categoryItem, isActive: true });
-  if (!exists) return next(new Error('Invalid or inactive categoryItem'));
+  const exists = await CategoryItem.exists({ _id: this.categoryItem });
+  if (!exists) return next(new Error('Invalid categoryItem'));
   next();
 });
 

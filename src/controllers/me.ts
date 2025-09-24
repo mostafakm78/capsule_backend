@@ -5,7 +5,7 @@ import { AppError, AuthRequest } from '../types/types';
 import { deleteImageBulletproof, toImagesRelative, IMAGES_ROOT, resolveImageAbsolutePath } from '../helper/fileCleanup';
 import { removeUploaded } from '../helper/remover';
 import Notification from '../models/Notification';
-import { validationResult } from 'express-validator';
+import { FieldValidationError, ValidationError, validationResult } from 'express-validator';
 
 /* ------------ Types for bodies ------------ */
 
@@ -53,14 +53,25 @@ export const getUser = async (req: Request & AuthRequest, res: Response, next: N
 /* ------------ PATCH /me ------------ */
 /** Update user profile or password */
 export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfileBody> & AuthRequest, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'update user Validation Falied',
+      message: 'Edit capsule validation faield',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
+
   try {
     const userId: string | undefined = req.user?.id;
     if (!userId) {
@@ -72,7 +83,6 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
     const file: Express.Multer.File | undefined = (req as any).file;
     const wantsPasswordChange: boolean = typeof body.newPassword === 'string' || typeof body.currentPassword === 'string';
 
-    // -------- Password branch --------
     if (wantsPasswordChange) {
       const currentPassword: string = String(body.currentPassword ?? '');
       const newPassword: string = String(body.newPassword ?? '');
@@ -84,6 +94,7 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
           statusCode: 400,
         } as AppError);
       }
+
       if (newPassword.length < 8) {
         await removeUploaded(req);
         return next({
@@ -115,16 +126,13 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       if (body.removeImage === 'true') {
         userDoc.avatar = undefined as any;
       } else if (file?.path) {
-        const normalized = file.path.replace(/\\/g, '/'); // normalize path for all OS
-        userDoc.avatar = toImagesRelative(normalized); // store relative path
+        const normalized = file.path.replace(/\\/g, '/'); // normalize path
+        userDoc.avatar = toImagesRelative(normalized);
       }
 
       await userDoc.save();
 
-      // Cleanup previous avatar if needed
-      if (body.removeImage === 'true' && prevAvatar) {
-        await deleteImageBulletproof(prevAvatar);
-      } else if (file?.path && prevAvatar && prevAvatar !== userDoc.avatar) {
+      if ((body.removeImage === 'true' || file?.path) && prevAvatar && prevAvatar !== userDoc.avatar) {
         await deleteImageBulletproof(prevAvatar);
       }
 
@@ -133,25 +141,25 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
       return res.status(200).json({ message: 'Password updated', user: safe });
     }
 
-    // ---------- Profile-only branch ----------
     const userDoc = await User.findById(userId);
     if (!userDoc) {
       await removeUploaded(req);
       return next({ message: 'User not found', statusCode: 404 } as AppError);
     }
 
+    const prevAvatar = userDoc.avatar;
     let touched: boolean = false;
 
     if (body.name !== undefined) {
-      userDoc.name = String(body.name).trim(); // trim name
+      userDoc.name = String(body.name).trim();
       touched = true;
     }
     if (body.about !== undefined) {
-      userDoc.about = String(body.about).trim(); // trim about
+      userDoc.about = String(body.about).trim();
       touched = true;
     }
     if (body.birthday !== undefined) {
-      userDoc.birthday = body.birthday ? String(body.birthday) : undefined; // allow unset
+      userDoc.birthday = body.birthday ? String(body.birthday) : undefined;
       touched = true;
     }
     if (body.education !== undefined) {
@@ -160,27 +168,28 @@ export const updateUser = async (req: Request<EmptyParams, unknown, UpdateProfil
     }
 
     if (body.removeImage === 'true') {
-      userDoc.avatar = undefined as any; // remove avatar
+      userDoc.avatar = undefined as any;
       touched = true;
     } else if (file?.path) {
-      const normalized = file.path.replace(/\\/g, '/'); // normalize path
-      userDoc.avatar = toImagesRelative(normalized); // set new avatar
+      const normalized = file.path.replace(/\\/g, '/');
+      userDoc.avatar = toImagesRelative(normalized);
       touched = true;
     }
 
     if (!touched) {
-      await removeUploaded(req); // file came in but no actual updates
+      await removeUploaded(req);
       return res.status(200).json({ message: 'Nothing to update' });
     }
 
     await userDoc.save();
 
-    // Cleanup previous avatar if it changed or was removed
-    // (left intentionally minimal to keep logic unchanged)
+    if ((file?.path || body.removeImage === 'true') && prevAvatar && prevAvatar !== userDoc.avatar) {
+      await deleteImageBulletproof(prevAvatar);
+    }
 
     const safe = userDoc.toObject();
     delete (safe as any).password;
-    return res.status(200).json({ message: 'Profile updated', user: safe });
+    return res.status(200).json({ message: 'Profile updated', status: 200, user: safe });
   } catch (error: any) {
     await removeUploaded(req);
 
@@ -202,10 +211,10 @@ export const getNotifications = async (req: Request, res: Response, next: NextFu
     if (!AllNotif) return next({ message: 'Notifications not found', statusCode: 404 } as AppError);
 
     if (AllNotif.length === 0) {
-      return res.status(200).json({ message: 'No notifications', notifications: [] });
+      return res.status(201).json({ message: 'No notifications' ,status : 201, notifications: [] });
     }
 
-    res.status(200).json({ message: 'Notifications here', AllNotif });
+    res.status(200).json({ message: 'Notifications here' ,status : 200, AllNotif });
   } catch (error: any) {
     return next({
       message: 'Internal error while getting notifications',

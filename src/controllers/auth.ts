@@ -6,7 +6,8 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { cookieOpts } from '../helper/cookie';
 import nodemailer from 'nodemailer';
-import { validationResult } from 'express-validator';
+import { FieldValidationError, ValidationError, validationResult } from 'express-validator';
+import { Types } from 'mongoose';
 
 /* ---------- Utils ---------- */
 
@@ -57,14 +58,63 @@ const sendOTP = async (email: string, otp: string): Promise<void> => {
 
 /* ---------- Controllers ---------- */
 
-// Signup: email + password
-export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+// check email
+export const getEmail = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
       message: 'Singup Validation failed',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
+    } as AppError);
+  }
+  try {
+    const email = req.body.email;
+
+    if (!email) return next({ message: 'Email not Found', statusCode: 404 } as AppError);
+
+    const UserFound = await User.findOne({ email });
+
+    if (!UserFound) return res.json({ message: 'notFound' });
+
+    return res.json({ message: 'Found' });
+  } catch (error: any) {
+    return next({
+      message: 'Failed to find user with email',
+      statusCode: 500,
+      data: error,
+    } as AppError);
+  }
+};
+
+// Signup: email + password
+export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
+    return next({
+      message: 'Singup Validation failed',
+      statusCode: 422,
+      data: data,
     } as AppError);
   }
   try {
@@ -93,10 +143,10 @@ export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: 
 
     // Create user
     const newUser = await User.create({ password: hashPassword, email });
-    res.status(201).json({ message: 'User created successfully', newUser });
+    res.status(201).json({ message: 'User created successfully', status: 201, newUser });
   } catch (error: any) {
     // Server error
-    next({
+    return next({
       message: 'Failed to create user',
       statusCode: 500,
       data: error,
@@ -106,12 +156,22 @@ export const signup = async (req: Request<{}, {}, Singup>, res: Response, next: 
 
 // Login: email + password -> set cookies
 export const login = async (req: Request<{}, {}, Singup>, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'Login Validation failed',
+      message: 'Singup Validation failed',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -149,7 +209,7 @@ export const login = async (req: Request<{}, {}, Singup>, res: Response, next: N
     res.cookie('accessToken', accessToken, cookieOpts(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
-    res.json({ message: 'Login successful' });
+    res.json({ message: 'Login successful', status: 200 });
   } catch (error: any) {
     return next({
       message: 'Login failed',
@@ -161,12 +221,22 @@ export const login = async (req: Request<{}, {}, Singup>, res: Response, next: N
 
 // Request OTP by email (passwordless)
 export const loginWithOTP = async (req: Request, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'Send OTP Validation failed',
+      message: 'Singup Validation failed',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -181,7 +251,7 @@ export const loginWithOTP = async (req: Request, res: Response, next: NextFuncti
     }
 
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+otpRequestTime +OTP +otpExpiration');
     if (!user) {
       return next({
         message: 'User not found',
@@ -220,7 +290,7 @@ export const loginWithOTP = async (req: Request, res: Response, next: NextFuncti
 
     // Generate & set 6-digit OTP with 3 min expiry
     const otp: string = generateOTP();
-    const otpExpiration: Date = new Date();
+    const otpExpiration: Date = new Date(Date.now() + 5 * 60 * 1000);
     otpExpiration.setMinutes(otpExpiration.getMinutes() + 3);
 
     user.OTP = otp;
@@ -231,7 +301,7 @@ export const loginWithOTP = async (req: Request, res: Response, next: NextFuncti
     // Send OTP
     await sendOTP(email, otp);
 
-    res.status(200).json({ message: 'OTP sent to your email' });
+    res.status(200).json({ message: 'OTP sent to your email', status: 200 });
   } catch (error: any) {
     return next({
       message: 'Failed to send OTP',
@@ -243,12 +313,22 @@ export const loginWithOTP = async (req: Request, res: Response, next: NextFuncti
 
 // Verify OTP and issue tokens
 export const verifyOTP = async (req: Request, res: Response, next: NextFunction) => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'Verify OTP Validations failed',
+      message: 'Singup Validation failed',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -298,7 +378,7 @@ export const verifyOTP = async (req: Request, res: Response, next: NextFunction)
     res.cookie('accessToken', accessToken, cookieOpts(15 * 60 * 1000));
     res.cookie('refreshToken', refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
-    res.json({ message: 'Login successful' });
+    res.json({ message: 'Login successful', status: 200 });
   } catch (error: any) {
     next({
       message: 'OTP verification failed',
@@ -327,5 +407,31 @@ export const logout = async (req: Request<{}, {}, Singup>, res: Response, _next:
   res.clearCookie('accessToken', cookieOpts(0));
   res.clearCookie('refreshToken', cookieOpts(0));
 
-  res.json({ message: 'Logged out' });
+  res.json({ message: 'Logged out', status: 200 });
+};
+
+export const refreshAccessToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const refresh = req.cookies?.refreshToken;
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+
+    if (!refresh || !JWT_SECRET || !JWT_REFRESH_SECRET) {
+      return next({ message: 'Authentication required', statusCode: 401 } as AppError);
+    }
+
+    const payload = jwt.verify(refresh, JWT_REFRESH_SECRET) as { id: string };
+
+    const user = await User.findById(payload.id).select('+refreshToken');
+    if (!user || !user.refreshToken || user.refreshToken !== hashRt(refresh)) {
+      return next({ message: 'Invalid refresh token', statusCode: 403 } as AppError);
+    }
+
+    const newAccess = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '15m' });
+
+    res.cookie('accessToken', newAccess, cookieOpts(15 * 60 * 1000));
+    return res.status(200).json({ message: 'Access token refreshed', accessToken: newAccess });
+  } catch (err: any) {
+    return next({ message: 'Could not refresh access token', statusCode: 401, data: err?.message } as AppError);
+  }
 };

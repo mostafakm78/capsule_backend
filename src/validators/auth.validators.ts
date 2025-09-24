@@ -1,7 +1,9 @@
-import { body } from 'express-validator';
+import { body, ValidationChain } from 'express-validator';
 import User from '../models/User';
 
-export const signupValidators = [
+export const getEmailValidation: ValidationChain[] = [body('email').isEmail().withMessage('لطفاً ایمیل معتبر وارد کنید').bail().normalizeEmail()];
+
+export const signupValidators: ValidationChain[] = [
   body('email')
     .isEmail()
     .withMessage('لطفاً ایمیل معتبر وارد کنید')

@@ -1,6 +1,6 @@
 import { body } from 'express-validator';
 
-const updateUserValidation = [
+export const updateUserValidation = [
   body('currentPassword')
     .optional()
     .isLength({ min: 8, max: 18 })
@@ -25,9 +25,9 @@ const updateUserValidation = [
 
   body('name').optional().isString().withMessage('لطفا اسم معتبر وارد نمایید').isLength({ min: 6, max: 24 }).withMessage('نام و نام خانوادگی شما باید حداقل ٦ و حداکثر ٢٤ باشد').trim().bail(),
 
-  body('about').isString().withMessage('توضیحات شما نامعتبر می‌باشد').isLength({ min: 32, max: 500 }).withMessage('توضیحات شما باید حداقل ۳۲ و حداکثر ۵۰۰ کاراکتر باشد').trim().bail(),
+  body('about').optional().isString().withMessage('توضیحات شما نامعتبر می‌باشد').isLength({ min: 32, max: 500 }).withMessage('توضیحات شما باید حداقل ۳۲ و حداکثر ۵۰۰ کاراکتر باشد').trim().bail(),
 
-  body('birthday').isString().withMessage('لطفا تاریخ معتبر وارد نمایید').trim().bail(),
+  body('birthday').optional().isString().withMessage('لطفا تاریخ معتبر وارد نمایید').trim().bail(),
 
-  body('education').isString().withMessage('لطفا میزان تحصیلات را معتبر وارد نمایید').trim().bail(),
+  body('education').optional().isString().withMessage('لطفا میزان تحصیلات را معتبر وارد نمایید').trim().bail(),
 ];

@@ -41,12 +41,10 @@ const hashRt = (rt: string): string => crypto.createHash('sha256').update(rt).di
 /** Auth guard: verify access token, fallback to refresh rotation */
 export const requireAuth = async (req: AuthedRequest, res: Response, next: NextFunction) => {
   const access: string | undefined = req.cookies?.accessToken;
-  const refresh: string | undefined = req.cookies?.refreshToken;
 
   const JWT_SECRET: string | undefined = process.env.JWT_SECRET;
-  const JWT_REFRESH_SECRET: string | undefined = process.env.JWT_REFRESH_SECRET;
 
-  if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+  if (!JWT_SECRET) {
     return next({ message: 'Server JWT misconfigured', statusCode: 500 } as AppError);
   }
 
@@ -66,42 +64,8 @@ export const requireAuth = async (req: AuthedRequest, res: Response, next: NextF
 
     req.user = { id: payload.id, role: payload.role };
     return next();
-  } catch (_e) {
-    // Fallback to refresh flow
-    if (!refresh) {
-      return next({ message: 'Authentication required', statusCode: 401 } as AppError);
-    }
-
-    try {
-      const rPayload: RefreshPayload = jwt.verify(refresh, JWT_REFRESH_SECRET) as RefreshPayload;
-      if (!rPayload?.id) {
-        return next({ message: 'Authentication required', statusCode: 401 } as AppError);
-      }
-
-      // Load user incl. stored hashed refreshToken
-      const user = (await User.findById(rPayload.id).select('+refreshToken')) as (IUser & { save: () => Promise<IUser> }) | null;
-
-      if (!user || !user.refreshToken || user.refreshToken !== hashRt(refresh)) {
-        return next({ message: 'Invalid refresh token', statusCode: 403 } as AppError);
-      }
-
-      // Rotate tokens (issue new pair)
-      const newAccess: string = jwt.sign({ id: String(user._id), role: user.role as Role }, JWT_SECRET, { expiresIn: '15m' });
-
-      const newRefresh: string = jwt.sign({ id: String(user._id) }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
-
-      user.refreshToken = hashRt(newRefresh);
-      await user.save();
-
-      // Set cookies (httpOnly etc. via cookieOpts)
-      res.cookie('accessToken', newAccess, cookieOpts(15 * 60 * 1000));
-      res.cookie('refreshToken', newRefresh, cookieOpts(7 * 24 * 60 * 60 * 1000));
-
-      req.user = { id: String(user._id), role: user.role as Role };
-      return next();
-    } catch (_e2) {
-      return next({ message: 'Authentication required', statusCode: 401 } as AppError);
-    }
+  } catch (error) {
+    return next({ message: 'Unauthorized', statusCode: 401 } as AppError);
   }
 };
 
