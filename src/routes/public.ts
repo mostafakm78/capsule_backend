@@ -1,8 +1,12 @@
 import { Router } from 'express';
-import { postContactForm } from '../controllers/public';
+import { getCapsules, getCategories, getSingleCapsule, getUserCapsules, postContactForm } from '../controllers/public';
 
 const publicRouter = Router();
 
-publicRouter.post('/contactus' , postContactForm);
+publicRouter.get('/categories', getCategories);
+publicRouter.post('/contactus', postContactForm);
+publicRouter.get('/capsules', getCapsules);
+publicRouter.get('/capsules/:id', getSingleCapsule);
+publicRouter.get('/usercapsules/:userId', getUserCapsules);
 
 export default publicRouter;

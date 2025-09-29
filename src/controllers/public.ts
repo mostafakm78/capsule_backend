@@ -4,8 +4,12 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import ContactUs from '../models/ContactUs';
 
 // Types from your shared file
-import type { FormRequest, AppError, IContactUs } from '../types/types';
+import type { FormRequest, AppError, IContactUs, AuthRequest } from '../types/types';
 import { validationResult } from 'express-validator';
+import Capsule from '../models/Capsule';
+import { FilterQuery, Types } from 'mongoose';
+import { removeUploaded } from '../helper/remover';
+import { CategoryItem } from '../models/Category';
 
 // Handle "Contact Us" submission
 export const postContactForm = async (req: Request<Record<string, never>, unknown, FormRequest>, res: Response, next: NextFunction): Promise<void> => {
@@ -126,5 +130,172 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
       statusCode: 500,
       data: error?.message ?? error,
     } as AppError);
+  }
+};
+
+export const getCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    // pagination & filters from query
+    const { page = '1', limit = '6', categoryItem, q, sort } = req.query as Record<string, string>;
+
+    const pageNum: number = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 6));
+
+    // base filter: only owner documents
+    const and: any[] = [];
+
+    and.push({ 'access.visibility': 'public' });
+
+    // categoryItem filter (comma-separated ids)
+    if (categoryItem) {
+      const ids: Types.ObjectId[] = String(categoryItem)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Types.ObjectId.isValid)
+        .map((id) => new Types.ObjectId(id));
+      if (ids.length === 0) return res.status(400).json({ message: 'Invalid categoryItem id(s)' });
+
+      and.push({ categoryItem: { $in: ids } });
+    }
+
+    // text search on title/description (escaped regex)
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const query: string = (q ?? '').trim();
+    if (query) {
+      const pattern: string = escapeRegExp(query);
+      and.push({
+        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
+      });
+    }
+
+    // combine filters
+    const where: FilterQuery<typeof Capsule> = and.length === 1 ? and[0] : { $and: and };
+
+    // sort (newest default)
+    const s = (sort || '').toLowerCase();
+    const dir: 1 | -1 = s === 'oldest' ? 1 : -1;
+    const sortObj: Record<string, 1 | -1> = { createdAt: dir as 1 | -1 };
+
+    // query & count in parallel
+    const [items, total] = await Promise.all([
+      Capsule.find(where)
+        .sort(sortObj)
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .populate('owner')
+        .lean(),
+      Capsule.countDocuments(where),
+    ]);
+
+    return res.status(200).json({
+      items,
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
+      sort: dir === -1 ? 'newest' : 'oldest',
+      filters: where,
+    });
+  } catch (error: any) {
+    return next({ message: 'Failed to get capsules', statusCode: 500, data: error?.message } as AppError);
+  }
+};
+
+export const getUserCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId: string | undefined = req.params?.userId; // current user id
+    if (!userId) {
+      await removeUploaded(req);
+      return next({ message: 'user not found', statusCode: 404 } as AppError);
+    }
+
+    // pagination & filters from query
+    const { page = '1', limit = '6', categoryItem, q, sort } = req.query as Record<string, string>;
+
+    const pageNum: number = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 6));
+
+    // base filter: only owner documents
+    const and: FilterQuery<typeof Capsule>[] = [{ owner: new Types.ObjectId(userId) }];
+
+    and.push({ 'access.visibility': 'public' });
+
+    // categoryItem filter (comma-separated ids)
+    if (categoryItem) {
+      const ids: Types.ObjectId[] = String(categoryItem)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Types.ObjectId.isValid)
+        .map((id) => new Types.ObjectId(id));
+      if (ids.length === 0) return res.status(400).json({ message: 'Invalid categoryItem id(s)' });
+
+      and.push({ categoryItem: { $in: ids } });
+    }
+
+    // text search on title/description (escaped regex)
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const query: string = (q ?? '').trim();
+    if (query) {
+      const pattern: string = escapeRegExp(query);
+      and.push({
+        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
+      });
+    }
+
+    // combine filters
+    const where: FilterQuery<typeof Capsule> = and.length === 1 ? and[0] : { $and: and };
+
+    // sort (newest default)
+    const s = (sort || '').toLowerCase();
+    const dir: 1 | -1 = s === 'oldest' ? 1 : -1;
+    const sortObj: Record<string, 1 | -1> = { createdAt: dir as 1 | -1 };
+
+    // query & count in parallel
+    const [items, total] = await Promise.all([
+      Capsule.find(where)
+        .sort(sortObj)
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .populate('owner')
+        .lean(),
+      Capsule.countDocuments(where),
+    ]);
+
+    return res.status(200).json({
+      items,
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
+      sort: dir === -1 ? 'newest' : 'oldest',
+      filters: where,
+    });
+  } catch (error: any) {
+    return next({ message: 'Failed to get capsules', statusCode: 500, data: error?.message } as AppError);
+  }
+};
+
+/* ------------ GET /capsules/:id ------------ */
+export const getSingleCapsule = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const capsuleId: string = req.params.id;
+
+    if (!Types.ObjectId.isValid(capsuleId)) {
+      return next({ message: 'Invalid capsule id', statusCode: 400 });
+    }
+
+    // fetch one by id & owner
+    const capsule = await Capsule.findOne({ _id: capsuleId }).populate('categoryItem owner').lean();
+    if (!capsule) {
+      return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
+    }
+
+    return res.status(200).json({ message: 'Capsule found', capsule });
+  } catch (error: any) {
+    return next({ message: 'Failed to get capsule', statusCode: 500, data: error?.message } as AppError);
+  }
+};
+
+export const getCategories = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const categoryItems = await CategoryItem.find().populate({ path: 'group', select: 'title' }).lean();
+
+    return res.status(200).json({ message: 'Categories found', status: 200, categoryItems });
+  } catch (error: any) {
+    return next({ message: 'Failed to get categories', statusCode: 500, data: error.message } as AppError);
   }
 };

@@ -106,10 +106,10 @@ app.get('/csrf-token', (req, res) => {
 app.use('/images', express.static(IMAGES_ROOT));
 
 // Routes
-app.use('/', publicRouter);
 app.use('/auth', authRouter, userIsBanned); // auth routes + ban check
 app.use('/me', requireAuth, userIsBanned, meRouter); // protected
 app.use('/capsules', requireAuth, userIsBanned, capsuleRoute); // protected
+app.use('/public', publicRouter);
 app.use('/admin', requireAuth, requireAdmin, adminRouter); // admin-only
 
 // CSRF error handler

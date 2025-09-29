@@ -507,7 +507,6 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
     const capsule = await Capsule.findOneAndUpdate({ _id: capsuleId, owner: singleUserId }, updateOps, { new: true, runValidators: true, context: 'query' });
     if (!capsule) return next({ message: 'Capsule not found', statusCode: 404 } as AppError);
 
-
     try {
       if (removeImageRequested && prevImage) {
         await deleteImageBulletproof(prevImage);
@@ -522,21 +521,35 @@ export const editSingleUserCapsule = async (req: Request<CapsuleParams, unknown,
   }
 };
 
-// Get all categories (admin only)
+// Get all categories (admin only) — same shape as user version
 export const getCategories = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
 
-    if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
-    if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
+    if (!userId) {
+      return next({ message: 'Authentication required', statusCode: 401 } as AppError);
+    }
+    if (userRole !== 'admin') {
+      return next({ message: 'Admin only', statusCode: 403 } as AppError);
+    }
 
-    const categoryGroup = await CategoryGroup.find().select('+title');
-    const categoryItems = await CategoryItem.find().select('+title');
+    const categoryItems = await CategoryItem.find()
+      .populate({ path: 'group', select: 'title' })
+      .sort({ createdAt: 1 }) // اختیاری: مرتب‌سازی پایدار
+      .lean();
 
-    return res.status(200).json({ message: 'Categories found', categoryGroup, categoryItems });
+    return res.status(200).json({
+      message: 'Categories found',
+      status: 200,
+      categoryItems,
+    });
   } catch (error: any) {
-    return next({ message: 'Failed to get categories', statusCode: 500, data: error.message } as AppError);
+    return next({
+      message: 'Failed to get categories',
+      statusCode: 500,
+      data: error.message,
+    } as AppError);
   }
 };
 
@@ -545,28 +558,39 @@ export const createCategory = async (req: Request<CreateCategoryParams, unknown,
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
-    const { categoryItem: newCategoryItem } = req.body as CreateCategoryBody;
+    const { categoryItem } = req.body as CreateCategoryBody;
     const { titleId: categoryTitleId } = req.params as CreateCategoryParams;
 
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
     if (userRole !== 'admin') return next({ message: 'Admin only', statusCode: 403 } as AppError);
 
     if (!categoryTitleId) return next({ message: 'Category title is required', statusCode: 400 } as AppError);
-    if (!Types.ObjectId.isValid(categoryTitleId)) return next({ message: 'Invalid category title id', statusCode: 400 } as AppError);
+    if (!Types.ObjectId.isValid(categoryTitleId)) {
+      return next({ message: 'Invalid category title id', statusCode: 400 } as AppError);
+    }
 
-    if (!newCategoryItem || !newCategoryItem.trim()) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+    const normalizedTitle = (categoryItem ?? '').trim();
+    if (!normalizedTitle) {
+      return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+    }
 
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
-    if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
+    if (!categoryGroup) {
+      return next({ message: 'Category title not found', statusCode: 404 } as AppError);
+    }
 
-    const exists = await CategoryItem.findOne({ group: categoryTitleId, key: newCategoryItem });
-    if (exists) return next({ message: 'Category item already exists', statusCode: 409 } as AppError);
+    // اتکا به ایندکس یکتا + هندل خطای 11000 برای اتمیک بودن
+    const doc = await CategoryItem.create({
+      title: normalizedTitle,
+      group: categoryTitleId,
+    });
 
-    const categoryItem = await CategoryItem.create({ title: newCategoryItem, key: newCategoryItem, group: categoryTitleId });
-
-    return res.status(201).json({ message: 'Category item created successfully', categoryItem });
+    return res.status(201).json({ message: 'Category item created successfully', categoryItem: doc });
   } catch (error: any) {
-    return next({ message: 'Failed to update categories', statusCode: 500, data: error.message } as AppError);
+    if (error?.code === 11000) {
+      return next({ message: 'Category item already exists', statusCode: 409 } as AppError);
+    }
+    return next({ message: 'Failed to create category', statusCode: 500, data: error?.message } as AppError);
   }
 };
 
@@ -575,7 +599,7 @@ export const editCategory = async (req: Request<EditCategoryParams, unknown, Cre
   try {
     const userId: string | undefined = req.user?.id;
     const userRole: Role | undefined = req.user?.role;
-    const { categoryItem: newCategoryItem } = req.body as CreateCategoryBody;
+    const { categoryItem } = req.body as CreateCategoryBody;
     const { itemId: categoryItemId, titleId: categoryTitleId } = req.params as EditCategoryParams;
 
     if (!userId) return next({ message: 'Authentication required', statusCode: 401 } as AppError);
@@ -586,22 +610,30 @@ export const editCategory = async (req: Request<EditCategoryParams, unknown, Cre
     if (!Types.ObjectId.isValid(categoryTitleId) || !Types.ObjectId.isValid(categoryItemId)) {
       return next({ message: 'Invalid id', statusCode: 400 } as AppError);
     }
-    if (!newCategoryItem || !newCategoryItem.trim()) return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+
+    const normalizedTitle = (categoryItem ?? '').trim();
+    if (!normalizedTitle) {
+      return next({ message: 'Category item is required', statusCode: 400 } as AppError);
+    }
 
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
     if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
 
-    const categoryItem = await CategoryItem.findOneAndUpdate({ _id: categoryItemId, group: categoryTitleId }, { $set: { title: newCategoryItem, key: newCategoryItem } }, { runValidators: true, new: true });
+    const updated = await CategoryItem.findOneAndUpdate({ _id: categoryItemId, group: categoryTitleId }, { $set: { title: normalizedTitle } }, { runValidators: true, new: true, context: 'query' });
 
-    if (!categoryItem) return next({ message: 'Category item not found', statusCode: 404 } as AppError);
+    if (!updated) return next({ message: 'Category item not found', statusCode: 404 } as AppError);
 
-    return res.status(200).json({ message: 'Category item updated successfully', categoryItem });
+    return res.status(200).json({ message: 'Category item updated successfully', categoryItem: updated });
   } catch (error: any) {
-    return next({ message: 'Failed to update categories', statusCode: 500, data: error.message } as AppError);
+    if (error?.code === 11000) {
+      // برخورد با موردی که عنوان جدید در همان گروه از قبل وجود دارد
+      return next({ message: 'Category item already exists', statusCode: 409 } as AppError);
+    }
+    return next({ message: 'Failed to update categories', statusCode: 500, data: error?.message } as AppError);
   }
 };
 
-// Delete a category item (admin only)
+// Delete a category item (admin only) — تغییری نیاز ندارد، فقط پیام خطا را یک‌دست می‌کنیم
 export const deleteCategory = async (req: Request<DeleteCategoryParams> & AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId: string | undefined = req.user?.id;
@@ -620,12 +652,12 @@ export const deleteCategory = async (req: Request<DeleteCategoryParams> & AuthRe
     const categoryGroup = await CategoryGroup.findById(categoryTitleId);
     if (!categoryGroup) return next({ message: 'Category title not found', statusCode: 404 } as AppError);
 
-    const categoryItem = await CategoryItem.findOneAndDelete({ _id: categoryItemId, group: categoryTitleId });
-    if (!categoryItem) return next({ message: 'Category item not found', statusCode: 404 } as AppError);
+    const deleted = await CategoryItem.findOneAndDelete({ _id: categoryItemId, group: categoryTitleId });
+    if (!deleted) return next({ message: 'Category item not found', statusCode: 404 } as AppError);
 
     return res.status(200).json({ message: 'Category item deleted successfully' });
   } catch (error: any) {
-    return next({ message: 'Failed to delete categories', statusCode: 500, data: error.message } as AppError);
+    return next({ message: 'Failed to delete categories', statusCode: 500, data: error?.message } as AppError);
   }
 };
 
