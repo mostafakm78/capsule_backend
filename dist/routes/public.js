@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const public_1 = require("../controllers/public");
+const contactus_validator_1 = require("../validators/contactus.validator");
+const publicRouter = (0, express_1.Router)();
+publicRouter.get('/categories', public_1.getCategories);
+publicRouter.post('/contactus', contactus_validator_1.contactUsValidation, public_1.postContactForm);
+publicRouter.get('/capsules', public_1.getCapsules);
+publicRouter.get('/capsules/:id', public_1.getSingleCapsule);
+publicRouter.get('/usercapsules/:userId', public_1.getUserCapsules);
+exports.default = publicRouter;

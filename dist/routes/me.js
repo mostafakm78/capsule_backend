@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const me_1 = require("../controllers/me");
+const me_validator_1 = require("../validators/me.validator");
+const meRouter = (0, express_1.Router)();
+meRouter.get('/', me_1.getUser);
+meRouter.patch('/', me_validator_1.updateUserValidation, me_1.updateUser);
+meRouter.get('/notifications', me_1.getNotifications);
+exports.default = meRouter;

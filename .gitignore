@@ -6,7 +6,6 @@ pnpm-debug.log*
 *.log
 
 # Build outputs
-dist/
 build/
 *.tsbuildinfo
 
@@ -35,4 +34,4 @@ Thumbs.db
 !.vscode/settings.json
 
 # Uploads
-uploads/
+images/

@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const capsules_1 = require("../controllers/capsules");
+const is_auth_1 = require("../middleware/is-auth");
+const capsule_validator_1 = require("../validators/capsule.validator");
+const capsuleRoute = (0, express_1.Router)();
+capsuleRoute.get('/categories', is_auth_1.requireAuth, capsules_1.getCategories);
+capsuleRoute.get('/', is_auth_1.requireAuth, capsules_1.getCapsules);
+capsuleRoute.post('/', is_auth_1.requireAuth, capsule_validator_1.createCapsuleValidation, capsules_1.createCapsule);
+capsuleRoute.get('/:id', is_auth_1.requireAuth, capsules_1.getSingleCapsule);
+capsuleRoute.delete('/:id', is_auth_1.requireAuth, capsules_1.deleteCapsule);
+capsuleRoute.patch('/:id', is_auth_1.requireAuth, capsule_validator_1.editCapsuleValidation, capsules_1.editCapsule);
+exports.default = capsuleRoute;
