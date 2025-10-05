@@ -157,14 +157,6 @@ Server will start at: [http://localhost:8080](http://localhost:8080)
 
 ---
 
-## 🧩 Future Plans
-
-- [ ] Add email notifications for capsule release
-- [ ] Add create link for reset password
-- [ ] Deploy to cloud
-
----
-
 ## 👨‍💻 Author
 
 **Mostafa Kamari**
