@@ -142,10 +142,15 @@ mongoose.connection.once('open', async () => {
   }
 });
 
+const MONGO_URI = process.env.MONGO_URI;
+
 // App bootstrap (DB + HTTP)
 const start = async (): Promise<void> => {
   try {
-    await mongoose.connect('mongodb://localhost:27017/capsule');
+    if (!MONGO_URI) {
+      throw new Error('MONGO_URI environment variable is not defined');
+    }
+    await mongoose.connect(MONGO_URI);
     console.log('Database connected');
 
     app.listen(8080, () => {

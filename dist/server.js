@@ -133,10 +133,14 @@ mongoose_1.default.connection.once('open', () => __awaiter(void 0, void 0, void 
         console.log('✅ Categories seeded');
     }
 }));
+const MONGO_URI = process.env.MONGO_URI;
 // App bootstrap (DB + HTTP)
 const start = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        yield mongoose_1.default.connect('mongodb://localhost:27017/capsule');
+        if (!MONGO_URI) {
+            throw new Error('MONGO_URI environment variable is not defined');
+        }
+        yield mongoose_1.default.connect(MONGO_URI);
         console.log('Database connected');
         app.listen(8080, () => {
             console.log('Server is running on port 8080');
