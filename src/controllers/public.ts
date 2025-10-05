@@ -5,20 +5,30 @@ import ContactUs from '../models/ContactUs';
 
 // Types from your shared file
 import type { FormRequest, AppError, IContactUs, AuthRequest } from '../types/types';
-import { validationResult } from 'express-validator';
+import { FieldValidationError, ValidationError, validationResult } from 'express-validator';
 import Capsule from '../models/Capsule';
-import { FilterQuery, Types } from 'mongoose';
+import { FilterQuery, isValidObjectId, Types } from 'mongoose';
 import { removeUploaded } from '../helper/remover';
 import { CategoryItem } from '../models/Category';
 
 // Handle "Contact Us" submission
 export const postContactForm = async (req: Request<Record<string, never>, unknown, FormRequest>, res: Response, next: NextFunction): Promise<void> => {
+  function isFieldError(e: ValidationError): e is FieldValidationError {
+    return e.type === 'field';
+  }
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const data = errors
+      .array()
+      .filter(isFieldError)
+      .map((e) => ({
+        field: e.path,
+        message: e.msg,
+      }));
     return next({
-      message: 'ContactUs Form Validation Failed',
+      message: 'create capsule validation faield',
       statusCode: 422,
-      data: errors.array().map((err) => err.msg),
+      data: data,
     } as AppError);
   }
   try {
@@ -136,10 +146,10 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
 export const getCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
     // pagination & filters from query
-    const { page = '1', limit = '6', categoryItem, q, sort } = req.query as Record<string, string>;
+    const { page = '1', limit = '12', categoryItem, q, sort } = req.query as Record<string, string>;
 
     const pageNum: number = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 6));
+    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 12));
 
     // base filter: only owner documents
     const and: any[] = [];
@@ -200,54 +210,52 @@ export const getCapsules = async (req: Request & AuthRequest, res: Response, nex
 
 export const getUserCapsules = async (req: Request & AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId: string | undefined = req.params?.userId; // current user id
+    const userId = req.params?.userId;
+
     if (!userId) {
       await removeUploaded(req);
       return next({ message: 'user not found', statusCode: 404 } as AppError);
     }
 
-    // pagination & filters from query
+    if (!isValidObjectId(userId)) {
+      await removeUploaded(req);
+      return next({ message: 'Invalid user id', statusCode: 400 } as AppError);
+    }
+
     const { page = '1', limit = '6', categoryItem, q, sort } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 6));
 
-    const pageNum: number = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum: number = Math.min(100, Math.max(1, parseInt(limit, 10) || 6));
-
-    // base filter: only owner documents
-    const and: FilterQuery<typeof Capsule>[] = [{ owner: new Types.ObjectId(userId) }];
+    const and: any[] = [{ owner: new Types.ObjectId(userId) }];
 
     and.push({ 'access.visibility': 'public' });
 
-    // categoryItem filter (comma-separated ids)
     if (categoryItem) {
-      const ids: Types.ObjectId[] = String(categoryItem)
+      const ids = String(categoryItem)
         .split(',')
         .map((s) => s.trim())
         .filter(Types.ObjectId.isValid)
         .map((id) => new Types.ObjectId(id));
-      if (ids.length === 0) return res.status(400).json({ message: 'Invalid categoryItem id(s)' });
 
+      if (ids.length === 0) {
+        return res.status(400).json({ message: 'Invalid categoryItem id(s)' });
+      }
       and.push({ categoryItem: { $in: ids } });
     }
 
-    // text search on title/description (escaped regex)
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const query: string = (q ?? '').trim();
+    const query = (q ?? '').trim();
     if (query) {
-      const pattern: string = escapeRegExp(query);
-      and.push({
-        $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }],
-      });
+      const pattern = escapeRegExp(query);
+      and.push({ $or: [{ title: { $regex: pattern, $options: 'i' } }, { description: { $regex: pattern, $options: 'i' } }] });
     }
 
-    // combine filters
-    const where: FilterQuery<typeof Capsule> = and.length === 1 ? and[0] : { $and: and };
+    const where = and.length === 1 ? and[0] : { $and: and };
 
-    // sort (newest default)
     const s = (sort || '').toLowerCase();
     const dir: 1 | -1 = s === 'oldest' ? 1 : -1;
-    const sortObj: Record<string, 1 | -1> = { createdAt: dir as 1 | -1 };
+    const sortObj = { createdAt: dir };
 
-    // query & count in parallel
     const [items, total] = await Promise.all([
       Capsule.find(where)
         .sort(sortObj)
@@ -265,6 +273,9 @@ export const getUserCapsules = async (req: Request & AuthRequest, res: Response,
       filters: where,
     });
   } catch (error: any) {
+    if (typeof error?.message === 'string' && /24 character hex string/i.test(error.message)) {
+      return next({ message: 'Invalid id format', statusCode: 400 } as AppError);
+    }
     return next({ message: 'Failed to get capsules', statusCode: 500, data: error?.message } as AppError);
   }
 };
