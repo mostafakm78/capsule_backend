@@ -2,8 +2,9 @@ import type { CookieOptions } from 'express';
 
 export const cookieOpts = (maxAge: number): CookieOptions => ({
   httpOnly: true,
-  sameSite: 'lax',
-  secure: false,
+  sameSite: 'none',
+  secure: true,
+  domain: '.capsule-memo.ir',
   path: '/',
   maxAge,
 });

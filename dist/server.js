@@ -34,14 +34,20 @@ const fileCleanup_1 = require("./helper/fileCleanup");
 const public_1 = __importDefault(require("./routes/public"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
-// Allowed CORS origins (adjust for prod)
-const ALLOWED = ['http://localhost:3000'];
-// CORS (credentials enabled)
+/** اگر پشت Cloudflare/پروکسی هستی برای Secure cookie ضروریه */
+app.set('trust proxy', 1);
+/** دامنه‌های مجاز تولید + لوکال */
+const ALLOWED = ['https://capsule-memo.ir', 'https://www.capsule-memo.ir', 'http://localhost:3000'];
+/** CORS با کوکی */
 app.use((0, cors_1.default)({
-    origin: ALLOWED,
+    origin(origin, cb) {
+        if (!origin)
+            return cb(null, true);
+        return cb(null, ALLOWED.includes(origin));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-XSRF-TOKEN'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-XSRF-TOKEN'],
 }));
 // Multer storage: route-based subfolders under IMAGES_ROOT
 const storage = multer_1.default.diskStorage({
@@ -92,10 +98,10 @@ app.use(body_parser_1.default.json());
 app.use(body_parser_1.default.urlencoded({ extended: false }));
 app.use(exports.upload);
 // CSRF protection (cookie-based tokens)
-app.use((0, csurf_1.default)({ cookie: { httpOnly: true, sameSite: 'lax', secure: false } }));
+app.use((0, csurf_1.default)({ cookie: { httpOnly: true, sameSite: 'none', secure: true, domain: '.capsule-memo.ir' } }));
 app.get('/csrf-token', (req, res) => {
     const token = req.csrfToken();
-    res.cookie('XSRF-TOKEN', token, { sameSite: 'lax', httpOnly: false, secure: false });
+    res.cookie('XSRF-TOKEN', token, { sameSite: 'none', httpOnly: false, secure: true, domain: '.capsule-memo.ir', path: '/' });
     res.json({ csrfToken: token });
 });
 // Static images
@@ -109,7 +115,7 @@ app.use('/admin', is_auth_1.requireAuth, is_auth_1.requireAdmin, admin_1.default
 // CSRF error handler
 app.use((err, req, res, next) => {
     if (err.code === 'EBADCSRFTOKEN') {
-        return res.status(403).json({ message: 'Invalid CSRF token', err });
+        return res.status(403).json({ message: 'Invalid CSRF token' });
     }
     return next(err);
 });

@@ -24,16 +24,22 @@ dotenv.config();
 
 const app = express();
 
-// Allowed CORS origins (adjust for prod)
-const ALLOWED: string[] = ['http://localhost:3000'];
+/** اگر پشت Cloudflare/پروکسی هستی برای Secure cookie ضروریه */
+app.set('trust proxy', 1);
 
-// CORS (credentials enabled)
+/** دامنه‌های مجاز تولید + لوکال */
+const ALLOWED: string[] = ['https://capsule-memo.ir', 'https://www.capsule-memo.ir', 'http://localhost:3000'];
+
+/** CORS با کوکی */
 app.use(
   cors({
-    origin: ALLOWED,
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      return cb(null, ALLOWED.includes(origin));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-XSRF-TOKEN'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-XSRF-TOKEN'],
   })
 );
 
@@ -94,11 +100,11 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(upload);
 
 // CSRF protection (cookie-based tokens)
-app.use(csurf({ cookie: { httpOnly: true, sameSite: 'lax', secure: false } }));
+app.use(csurf({ cookie: { httpOnly: true, sameSite: 'none' as const, secure: true, domain: '.capsule-memo.ir' } }));
 
 app.get('/csrf-token', (req, res) => {
   const token = req.csrfToken();
-  res.cookie('XSRF-TOKEN', token, { sameSite: 'lax', httpOnly: false, secure: false });
+  res.cookie('XSRF-TOKEN', token, { sameSite: 'none', httpOnly: false, secure: true, domain: '.capsule-memo.ir', path: '/' });
   res.json({ csrfToken: token });
 });
 
@@ -115,7 +121,7 @@ app.use('/admin', requireAuth, requireAdmin, adminRouter); // admin-only
 // CSRF error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({ message: 'Invalid CSRF token', err });
+    return res.status(403).json({ message: 'Invalid CSRF token' });
   }
   return next(err);
 });
