@@ -24,12 +24,12 @@ const generateOTP = (length: number = 6): string => {
 // Send OTP via Gmail SMTP (use ENV in production)
 const sendOTP = async (email: string, otp: string): Promise<void> => {
   const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
     secure: false, // STARTTLS
     auth: {
-      user: 'mostafamf555@gmail.com', // TODO: move to ENV
-      pass: 'aeqy ocnx rfht jepm', // TODO: move to ENV
+      user: process.env.SMTP_USER, // use ENV
+      pass: process.env.SMTP_PASS, // use ENV (App Password)
     },
   });
 

@@ -55,19 +55,19 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
 
     // Configure Nodemailer (Gmail SMTP); move creds to ENV in production
     const transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
       secure: false, // STARTTLS
       auth: {
-        user: 'mostafamf555@gmail.com', // TODO: use ENV
-        pass: 'aeqy ocnx rfht jepm', // TODO: use ENV (App Password)
+        user: process.env.SMTP_USER, // use ENV
+        pass: process.env.SMTP_PASS, // use ENV (App Password)
       },
     });
 
     // Compose email to admin
     const mailOptions: nodemailer.SendMailOptions = {
       from: email, // user email
-      to: 'mostafamf555@gmail.com', // admin email
+      to: process.env.SMTP_HOST, // admin email
       subject: 'پیام جدید از کاربران سایت کپسول',
       html: `
     <html lang="fa" dir="rtl">
