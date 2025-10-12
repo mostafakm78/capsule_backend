@@ -21,6 +21,12 @@ const cookie_1 = require("../helper/cookie");
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const express_validator_1 = require("express-validator");
 /* ---------- Utils ---------- */
+function requiredEnv(name) {
+    const v = process.env[name];
+    if (!v)
+        throw new Error(`Missing env: ${name}`);
+    return v;
+}
 // Hash refresh token (SHA-256)
 const hashRt = (rt) => crypto_1.default.createHash('sha256').update(rt).digest('hex');
 // Generate numeric OTP of given length
@@ -33,16 +39,16 @@ const generateOTP = (length = 6) => {
 // Send OTP via Gmail SMTP (use ENV in production)
 const sendOTP = (email, otp) => __awaiter(void 0, void 0, void 0, function* () {
     const transporter = nodemailer_1.default.createTransport({
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false, // STARTTLS
+        host: requiredEnv('SMTP_HOST'),
+        port: Number(requiredEnv('SMTP_PORT')),
+        secure: false,
         auth: {
-            user: 'mostafamf555@gmail.com', // TODO: move to ENV
-            pass: 'aeqy ocnx rfht jepm', // TODO: move to ENV
+            user: requiredEnv('SMTP_USER'),
+            pass: requiredEnv('SMTP_PASS'),
         },
     });
     const mailOptions = {
-        from: 'mostafamf555@gmail.com',
+        from: requiredEnv('CONTACT_TO'),
         to: email,
         subject: 'کد یکبار مصرف سایت کپسول',
         html: `

@@ -11,6 +11,12 @@ import { FilterQuery, isValidObjectId, Types } from 'mongoose';
 import { removeUploaded } from '../helper/remover';
 import { CategoryItem } from '../models/Category';
 
+function requiredEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
 // Handle "Contact Us" submission
 export const postContactForm = async (req: Request<Record<string, never>, unknown, FormRequest>, res: Response, next: NextFunction): Promise<void> => {
   function isFieldError(e: ValidationError): e is FieldValidationError {
@@ -55,19 +61,19 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
 
     // Configure Nodemailer (Gmail SMTP); move creds to ENV in production
     const transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT),
-      secure: false, // STARTTLS
+      host: requiredEnv('SMTP_HOST'),
+      port: Number(requiredEnv('SMTP_PORT')),
+      secure: false,
       auth: {
-        user: process.env.SMTP_USER, // use ENV
-        pass: process.env.SMTP_PASS, // use ENV (App Password)
+        user: requiredEnv('SMTP_USER'),
+        pass: requiredEnv('SMTP_PASS'),
       },
     });
 
     // Compose email to admin
     const mailOptions: nodemailer.SendMailOptions = {
       from: email, // user email
-      to: process.env.SMTP_HOST, // admin email
+      to: requiredEnv('CONTACT_TO'), // admin email
       subject: 'پیام جدید از کاربران سایت کپسول',
       html: `
     <html lang="fa" dir="rtl">
@@ -128,7 +134,6 @@ export const postContactForm = async (req: Request<Record<string, never>, unknow
           data: (error as Error).message,
         } as AppError);
       }
-      console.log('Email sent:', info.response);
     });
 
     // Success response (201 Created) with saved entity

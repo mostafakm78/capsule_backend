@@ -11,6 +11,12 @@ import { Types } from 'mongoose';
 
 /* ---------- Utils ---------- */
 
+function requiredEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
 // Hash refresh token (SHA-256)
 const hashRt = (rt: string): string => crypto.createHash('sha256').update(rt).digest('hex');
 
@@ -24,17 +30,17 @@ const generateOTP = (length: number = 6): string => {
 // Send OTP via Gmail SMTP (use ENV in production)
 const sendOTP = async (email: string, otp: string): Promise<void> => {
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: false, // STARTTLS
+    host: requiredEnv('SMTP_HOST'),
+    port: Number(requiredEnv('SMTP_PORT')),
+    secure: false,
     auth: {
-      user: process.env.SMTP_USER, // use ENV
-      pass: process.env.SMTP_PASS, // use ENV (App Password)
+      user: requiredEnv('SMTP_USER'),
+      pass: requiredEnv('SMTP_PASS'),
     },
   });
 
   const mailOptions = {
-    from: 'mostafamf555@gmail.com',
+    from: requiredEnv('CONTACT_TO'),
     to: email,
     subject: 'کد یکبار مصرف سایت کپسول',
     html: `

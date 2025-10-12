@@ -20,6 +20,12 @@ const Capsule_1 = __importDefault(require("../models/Capsule"));
 const mongoose_1 = require("mongoose");
 const remover_1 = require("../helper/remover");
 const Category_1 = require("../models/Category");
+function requiredEnv(name) {
+    const v = process.env[name];
+    if (!v)
+        throw new Error(`Missing env: ${name}`);
+    return v;
+}
 // Handle "Contact Us" submission
 const postContactForm = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
@@ -62,18 +68,18 @@ const postContactForm = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
         });
         // Configure Nodemailer (Gmail SMTP); move creds to ENV in production
         const transporter = nodemailer_1.default.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // STARTTLS
+            host: requiredEnv('SMTP_HOST'),
+            port: Number(requiredEnv('SMTP_PORT')),
+            secure: false,
             auth: {
-                user: 'mostafamf555@gmail.com', // TODO: use ENV
-                pass: 'aeqy ocnx rfht jepm', // TODO: use ENV (App Password)
+                user: requiredEnv('SMTP_USER'),
+                pass: requiredEnv('SMTP_PASS'),
             },
         });
         // Compose email to admin
         const mailOptions = {
             from: email, // user email
-            to: 'mostafamf555@gmail.com', // admin email
+            to: requiredEnv('CONTACT_TO'), // admin email
             subject: 'پیام جدید از کاربران سایت کپسول',
             html: `
     <html lang="fa" dir="rtl">
@@ -133,7 +139,6 @@ const postContactForm = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
                     data: error.message,
                 });
             }
-            console.log('Email sent:', info.response);
         });
         // Success response (201 Created) with saved entity
         res.status(201).json({ message: 'Contact form submitted', newContactForm });
